@@ -7,8 +7,8 @@ import math
 import pickle
 import N_Mark_Alignment_setting as setting
 
-# USE_AGENT = f"{BOARD_SIDE}_{REWARD_LINE}_{LEARNING_COUNT}_{TEST_COUNT}"
-USE_AGENT = f"5_3_10000000_1000000"
+# USE_AGENT = f"{BOARD_SIDE}_{REWARD_LINE}_{LEARNING_COUNT}"
+USE_AGENT = f"3_3_100000"
 
 load_model_agent_path = f"agent_model/{USE_AGENT}.pkl"
 
@@ -17,12 +17,10 @@ SETTING_LIST = USE_AGENT.split("_")
 BOARD_SIDE = int(SETTING_LIST[0])
 REWARD_LINE = int(SETTING_LIST[1])
 LEARNING_COUNT = int(SETTING_LIST[2])
-TEST_COUNT = 100000
+PLAY_COUNT = 100000
 
 if __name__ == "__main__":
-    tic_tac_toe_variables = setting.TicTacToeVariable(
-        BOARD_SIDE, REWARD_LINE, LEARNING_COUNT, TEST_COUNT
-    )
+    tic_tac_toe_variables = setting.TicTacToeVariable(BOARD_SIDE, REWARD_LINE)
     env = setting.TicTacToeEnv(tic_tac_toe_variables)
     ### pickleで保存（書き出し）
     with open(load_model_agent_path, mode="br") as fi:
@@ -34,7 +32,7 @@ if __name__ == "__main__":
     draw = 0
     game = 0
 
-    for i in range(1, TEST_COUNT + 1):
+    for i in range(1, PLAY_COUNT + 1):
         rewards = agent.play()
         if rewards[-1] == tic_tac_toe_variables.win_point:
             win += 1
@@ -44,7 +42,7 @@ if __name__ == "__main__":
             draw += 1
         game += 1
 
-        if i % round(TEST_COUNT * 0.2) == 0:
+        if i % round(PLAY_COUNT * 0.2) == 0:
             setting.print_tictactoe_board(env)
             print(str(i) + "th play(test)", rewards)
             print("win %:", win / game * 100)
@@ -60,7 +58,7 @@ if __name__ == "__main__":
     print(f"BOARD:{BOARD_SIDE} × {BOARD_SIDE}")
     print(f"REWARD_LINE:{REWARD_LINE}")
     print(f"LEARNING_COUNT:{LEARNING_COUNT}")
-    print(f"TEST_COUNT:{TEST_COUNT}")
+    print(f"PLAY_COUNT:{PLAY_COUNT}")
     print("win %:", win / game * 100)
     print("lose %:", lose / game * 100)
     print("draw %:", draw / game * 100)

@@ -7,26 +7,48 @@ import math
 import pickle
 import N_Mark_Alignment_setting as setting
 
-BOARD_SIDE = 3
-REWARD_LINE = 3
-LEARNING_COUNT = 1000
-TEST_COUNT = 100
+USE_AGENT_FLAG = True
+USE_AGENT = f"3_3_10000"
+TEST_COUNT = 10000
 
-write_model_agent_path = (
-    f"agent_model/{BOARD_SIDE}_{REWARD_LINE}_{LEARNING_COUNT}_{TEST_COUNT}.pkl"
-)
+# エージェントを使用しない場合はBOARD_SIDE(盤面)、REWARD_LINE(N目並べ)、LEARNING_COUNT(学習回数)を入れる
+if not USE_AGENT_FLAG:
+    BOARD_SIDE = 3
+    REWARD_LINE = 3
+    LEARNING_COUNT = 10000
+    write_model_agent_path = (
+        f"agent_model/{BOARD_SIDE}_{REWARD_LINE}_{LEARNING_COUNT}.pkl"
+    )
+
+# エージェントを使用する場合はADDITIONAL_LEARNING_COUNT(追加学習回数)を入れる
+else:
+    LOAD_MODEL_AGENT_PATH = f"agent_model/{USE_AGENT}.pkl"
+    SETTING_LIST = USE_AGENT.split("_")
+
+    BOARD_SIDE = int(SETTING_LIST[0])
+    REWARD_LINE = int(SETTING_LIST[1])
+    LEARNING_COUNT = int(SETTING_LIST[2])
+    ADDITIONAL_LEARNING_COUNT = 100000
+    write_model_agent_path = f"agent_model/{BOARD_SIDE}_{REWARD_LINE}_{LEARNING_COUNT + ADDITIONAL_LEARNING_COUNT}.pkl"
+    LEARNING_COUNT = ADDITIONAL_LEARNING_COUNT
 
 if __name__ == "__main__":
-    tic_tac_toe_variables = setting.TicTacToeVariable(
-        BOARD_SIDE, REWARD_LINE, LEARNING_COUNT, TEST_COUNT
-    )
-    env = setting.TicTacToeEnv(tic_tac_toe_variables)
-    agent = setting.TicTacToeAgent(
-        env,
-        tic_tac_toe_variables,
-        epsilon=0.1,
-        min_alpha=0.01,
-    )
+    if not USE_AGENT_FLAG:
+        tic_tac_toe_variables = setting.TicTacToeVariable(BOARD_SIDE, REWARD_LINE)
+        env = setting.TicTacToeEnv(tic_tac_toe_variables)
+        agent = setting.TicTacToeAgent(
+            env,
+            tic_tac_toe_variables,
+            epsilon=0.1,
+            min_alpha=0.01,
+        )
+    else:
+        tic_tac_toe_variables = setting.TicTacToeVariable(BOARD_SIDE, REWARD_LINE)
+        env = setting.TicTacToeEnv(tic_tac_toe_variables)
+        ### pickleで保存（書き出し）
+        with open(LOAD_MODEL_AGENT_PATH, mode="br") as fi:
+            agent = pickle.load(fi)
+        agent.learning = True
 
     win = 0
     lose = 0
