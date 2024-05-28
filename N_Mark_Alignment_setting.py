@@ -8,11 +8,9 @@ import pickle
 
 
 class TicTacToeVariable:
-    def __init__(self, BOARD_SIDE, REWARD_LINE, LEARNING_COUNT, TEST_COUNT):
+    def __init__(self, BOARD_SIDE, REWARD_LINE):
         self.board_side = BOARD_SIDE
         self.reward_line = REWARD_LINE
-        self.learning_count = LEARNING_COUNT
-        self.test_count = TEST_COUNT
 
         self.win_point = (1 + self.board_side - self.reward_line) * 1.5
         self.lose_point = -((1 + self.board_side - self.reward_line) * 1)
