@@ -1,0 +1,3 @@
+
+agentモデルの名前は
+BOARD_SIDE(盤面)、REWARD_LINE(N目並べ)、LEARNING_COUNT(学習回数)の順になっている
