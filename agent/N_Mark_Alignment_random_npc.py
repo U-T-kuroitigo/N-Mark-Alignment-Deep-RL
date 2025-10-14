@@ -1,14 +1,12 @@
-import numpy as np
 import random
 import copy
+from typing import Any
 import agent.model.N_Mark_Alignment_agent_model as model
-import math
-import pickle
-import datetime
+import N_Mark_Alignment_env as ENV
 
 
 class N_Mark_Alignment_random_npc(model.Agent_Model):
-    def __init__(self, player_icon, player_value):
+    def __init__(self, player_icon: Any, player_value: int) -> None:
         super().__init__(player_icon, player_value)
 
     # 学習するかどうかを設定する関数
@@ -17,7 +15,7 @@ class N_Mark_Alignment_random_npc(model.Agent_Model):
         pass
 
     # 渡されたenvから次の行動を取得する関数
-    def get_action(self, env):
+    def get_action(self, env: ENV.N_Mark_Alignment_Env):
         # 行動を決定する関数
         def decide_action():
             return random.randint(0, self.board_side**2 - 1)
@@ -41,21 +39,16 @@ class N_Mark_Alignment_random_npc(model.Agent_Model):
         return next_action
 
     # 渡されたaction, result_value, stateをもとに結果を追加する関数
-    def append_continue_result(self, action, state, action_team_value):
+    def append_continue_result(
+        self, action: int, state: list[int], actor_team_value: int, next_team_value: int
+    ) -> None:
         # 特に何もしない
         pass
 
-    def decide_finish_reward(self, team_value, result_value):
-        if result_value == team_value:
-            reward = self.WIN_POINT
-        elif result_value == self.empty_value:
-            reward = self.DRAW_POINT
-        else:
-            reward = self.LOSE_POINT
-        return reward
-
     # 渡されたresult_valueをもとに結果を追加する関数
-    def append_finish_result(self, action, result_value, state):
+    def append_finish_result(
+        self, action: int, state: list[int], result_value: int
+    ) -> None:
         self.game_count += 1
         if result_value == self.my_team_value:
             self.win += 1
