@@ -1,4 +1,9 @@
+# 作業用ドキュメント（Git 管理対象外）
+docs/internal/
+
+
 /__pycache__/
 .vscode
 *.pyc
 /agent_model/
+/evaluate/result/

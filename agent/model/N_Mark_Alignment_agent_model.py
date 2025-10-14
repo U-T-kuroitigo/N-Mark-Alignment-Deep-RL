@@ -12,6 +12,7 @@ class Agent_Model(metaclass=abc.ABCMeta):
         self.set_player_icon(player_icon)
         self.set_player_value(player_value)
         self.board_side = 0
+        self.reward_line = 0
         self.my_team_value = 0
         self.empty_value = -1
         self.team_value_list = []
@@ -108,14 +109,14 @@ class Agent_Model(metaclass=abc.ABCMeta):
     def get_action(self, env):
         raise NotImplementedError()
 
-    # 渡されたfinish_flag, result_valueをもとに結果を追加する関数
+    # 渡された行動と次の手番をもとに中間結果を追加する関数
     @abc.abstractmethod
-    def append_continue_result(self, action, state, action_team_value):
+    def append_continue_result(self, action, state, actor_team_value, next_team_value):
         raise NotImplementedError()
 
     # 渡されたresult_valueをもとに結果を追加する関数
     @abc.abstractmethod
-    def append_finish_result(self, action, result_value, state):
+    def append_finish_result(self, action, state, result_value):
         raise NotImplementedError()
 
     # 盤面を文字列に変換する関数
@@ -178,6 +179,14 @@ class Agent_Model(metaclass=abc.ABCMeta):
             with open(write_model_agent_path, mode="wb") as fo:
                 pickle.dump(self, fo)
         return write_model_agent_path
+
+    # エージェントを読み込む関数@abstractmethod
+    def get_metadata(self) -> dict:
+        """
+        エージェントのメタ情報を辞書形式で返す。
+        モデル保存やXAIのために使用。
+        """
+        raise NotImplementedError()
 
     # 学習回数を取得する関数
     @abc.abstractmethod

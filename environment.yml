@@ -1,0 +1,17 @@
+name: Deep_RL_XAI_310
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.10
+  - cpuonly
+  - matplotlib
+  - numpy=1.26
+  - onnx
+  - onnxruntime
+  - pandas
+  - pillow
+  - pytorch
+  - tensorboard
+  - torchaudio
+  - torchvision
