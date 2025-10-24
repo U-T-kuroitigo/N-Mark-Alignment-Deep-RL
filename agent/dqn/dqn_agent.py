@@ -4,11 +4,17 @@ DQNベースのエージェントクラス。
 状態・報酬評価はユーティリティモジュールに分離し、責務を明確化。
 """
 
+import logging
+import random
+from collections import defaultdict
+from typing import Any, Callable, Dict, Optional
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import random
 import numpy as np
+
+import agent.model.N_Mark_Alignment_agent_model as model
 from agent.buffer.replay_buffer import ReplayBuffer
 from agent.utils.state_utils import make_tensor, make_state_tensor
 from agent.utils.reward_utils import (
@@ -18,9 +24,12 @@ from agent.utils.reward_utils import (
     calculate_intermediate_reward,
     normalize_intermediate_rewards,
 )
-import agent.model.N_Mark_Alignment_agent_model as model
-from typing import Dict, Any
-from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
+ACTION_SELECTED_HOOK = "action_selected"
+TRANSITION_RECORDED_HOOK = "transition_recorded"
+EPISODE_FINISHED_HOOK = "episode_finished"
 
 
 class DQN_Agent(model.Agent_Model):
@@ -79,6 +88,11 @@ class DQN_Agent(model.Agent_Model):
         self.replay_buffer = ReplayBuffer(self.BUFFER_SIZE)
         # 学習回数カウント
         self.learning_count = 0
+        self._hooks: Dict[str, list[Callable[[Dict[str, Any]], None]]] = defaultdict(
+            list
+        )
+        self.last_action_context: Optional[Dict[str, Any]] = None
+        self.last_transition: Optional[Dict[str, Any]] = None
 
     def epsilon_reset(self):
         """
@@ -86,6 +100,85 @@ class DQN_Agent(model.Agent_Model):
         学習開始時に呼び出すことで、探索率をリセットする。
         """
         self.epsilon = self.EPSILON_START
+
+    def register_hook(
+        self, event: str, callback: Callable[[Dict[str, Any]], None]
+    ) -> None:
+        """
+        XAI など外部処理で利用するフックを登録する。
+        指定イベントが発火すると callback(payload) が呼び出される。
+
+        Args:
+            event: イベント名（例: ACTION_SELECTED_HOOK）。
+            callback: コンテキスト辞書を受け取るコールバック。
+        """
+
+        if not isinstance(event, str):
+            raise TypeError("event must be a str")
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        self._hooks[event].append(callback)
+
+    def remove_hook(
+        self, event: str, callback: Callable[[Dict[str, Any]], None]
+    ) -> None:
+        """
+        登録済みフックを解除する。存在しない場合は何もしない。
+
+        Args:
+            event: イベント名。
+            callback: 解除したいコールバック。
+        """
+
+        callbacks = self._hooks.get(event)
+        if not callbacks:
+            return
+        try:
+            callbacks.remove(callback)
+        except ValueError:
+            return
+        if not callbacks:
+            self._hooks.pop(event, None)
+
+    def clear_hooks(self, event: Optional[str] = None) -> None:
+        """
+        登録済みフックを削除する。
+
+        Args:
+            event: 指定するとそのイベントのみ削除。None の場合は全イベントを削除。
+        """
+
+        if event is None:
+            self._hooks.clear()
+        else:
+            self._hooks.pop(event, None)
+
+    def _emit_hook(self, event: str, payload: Dict[str, Any]) -> None:
+        """
+        登録済みフックを呼び出す内部ユーティリティ。例外はログのみ記録する。
+
+        Args:
+            event: イベント名。
+            payload: コールバックに渡すコンテキスト辞書。
+        """
+
+        for callback in list(self._hooks.get(event, [])):
+            try:
+                callback(payload)
+            except Exception:  # pragma: no cover
+                logger.exception("hook '%s' raised an exception", event)
+
+    def _record_transition(self, transition: Dict[str, Any]) -> None:
+        """
+        エピソード内の遷移をバッファへ記録し、必要に応じてフックへ通知する。
+
+        Args:
+            transition: エピソード中に記録した遷移辞書。
+        """
+
+        self.episode_buffer.append(transition)
+        self.last_transition = transition
+        self._emit_hook(TRANSITION_RECORDED_HOOK, transition)
 
     def set_learning(self, learning):
         """
@@ -104,11 +197,13 @@ class DQN_Agent(model.Agent_Model):
         super().game_init()
         # 1試合分の行動記録バッファを初期化
         self.episode_buffer = []
+        self.last_action_context = None
+        self.last_transition = None
 
     def get_action(self, env):
         """
-        環境から現在の状態を取得し、Qネットワークを用いて行動を決定する。
-        ε-greedy法によりランダム行動も選択する。
+        環境から現在の盤面を取得し、Qネットワークと ε-greedy 法で行動を選択する。
+        選択内容はフックに通知され、XAI から参照できるよう情報を保持する。
 
         Args:
             env: 現在の環境オブジェクト
@@ -116,35 +211,62 @@ class DQN_Agent(model.Agent_Model):
         Returns:
             int: 選択された行動（マスのインデックス）
         """
-        # 状態テンソルを生成
-        state = make_state_tensor(env, self.board_side, self.device)
-        team_value_tensor = torch.tensor([self.my_team_value], dtype=torch.long).to(
-            self.device
+
+        # 盤面テンソルを生成し、ニューラルネット入力および説明用ログとして保持しておく。
+        state_tensor = make_state_tensor(env, self.board_side, self.device)
+        state_batch = state_tensor.unsqueeze(0)
+        team_value_tensor = torch.tensor(
+            [self.my_team_value], dtype=torch.long, device=self.device
         )
 
-        # ε-greedyによるランダム行動選択
-        if self.learning and random.random() < self.epsilon:
-            return random.randint(0, self.board_side**2 - 1)
+        board = list(env.get_board())
+        valid_actions = [
+            idx for idx, value in enumerate(board) if value == self.empty_value
+        ]
 
-        # ネットワークによりQ値を予測
-        with torch.no_grad():
-            q_values = self.policy_net(state.unsqueeze(0), team_value_tensor).squeeze()
+        with torch.no_grad():  # Q 値推論
+            raw_q_values = self.policy_net(state_batch, team_value_tensor).squeeze(0)
 
-        # 空いているマスだけを対象に最大Q値の行動を選択
-        board = env.get_board()
-        valid_actions = [i for i, v in enumerate(board) if v == self.empty_value]
-        q_values[[i for i in range(len(q_values)) if i not in valid_actions]] = -float(
-            "inf"
-        )
-        action = torch.argmax(q_values).item()
+        masked_q_values = raw_q_values.clone()
+        invalid_indices = [
+            i for i in range(len(masked_q_values)) if i not in valid_actions
+        ]
+        if invalid_indices:
+            masked_q_values[invalid_indices] = -float("inf")
+
+        epsilon_sample = random.random() if self.learning else 1.0
+        greedy_action = int(torch.argmax(masked_q_values).item())
+
+        if self.learning and valid_actions and epsilon_sample < self.epsilon:
+            action = int(random.choice(valid_actions))
+            selection_mode = "exploration"
+        else:
+            action = greedy_action
+            if action not in valid_actions and valid_actions:
+                action = valid_actions[0]
+            selection_mode = "policy" if valid_actions else "fallback"
+
+        context = {
+            "state_tensor": state_tensor.detach().cpu(),
+            "team_value": self.my_team_value,
+            "raw_q_values": raw_q_values.detach().cpu(),
+            "masked_q_values": masked_q_values.detach().cpu(),
+            "valid_actions": valid_actions,
+            "selected_action": action,
+            "greedy_action": greedy_action,
+            "selection_mode": selection_mode,
+            "epsilon": self.epsilon,
+            "epsilon_sample": epsilon_sample,
+        }
+        self.last_action_context = context
+        self._emit_hook(ACTION_SELECTED_HOOK, context)
+
+        self.prev_action = action
         return action
 
     def append_continue_result(self, action, state, actor_team_value, next_team_value):
         """
-        各ターンでの中間結果をepisode_bufferに記録。
-        全プレイヤーの行動を保存するが、学習は自身の行動のみ対象とする。
-
-        次の手番者のチーム値は引数next_team_valueで受け取り、終了フラグは常にFalse。
+        ゲーム継続中の遷移を episode_buffer に記録する。
 
         Args:
             action (int): 実行された行動
@@ -173,66 +295,65 @@ class DQN_Agent(model.Agent_Model):
         state_tensor = make_tensor(state, self.board_side)
         next_state_tensor = make_tensor(next_state, self.board_side)
 
-        # エピソードバッファに辞書形式で保存
-        self.episode_buffer.append(
-            {
-                "board_state": state_tensor,
-                "actor_team_value": actor_team_value,
-                "action": action,
-                "reward": reward,
-                "next_board_state": next_state_tensor,
-                "next_team_value": next_team_value,
-                "done": done,
-            }
-        )
+        transition = {
+            "board_state": state_tensor,
+            "actor_team_value": actor_team_value,
+            "action": action,
+            "reward": reward,
+            "next_board_state": next_state_tensor,
+            "next_team_value": next_team_value,
+            "done": done,
+            "state": state.copy(),
+            "next_state": next_state,
+        }
+        self._record_transition(transition)
+
+        if (
+            self.last_action_context
+            and self.last_action_context.get("selected_action") == action
+        ):
+            self.last_action_context["reward"] = reward
+            self.last_action_context["next_state_tensor"] = (
+                next_state_tensor.detach().cpu()
+            )
 
     def append_finish_result(self, action, state, result_value):
         """
-        試合終了時に呼ばれる関数。
-        エピソード中に集めた中間報酬を正規化し、全視点分の終局報酬を割引付きで加算。
-        各視点ごとにReplayBufferに追加し、その都度学習を実行する。
+        エピソード終了時の処理を行い、報酬計算とリプレイバッファ更新を実施する。
 
         Args:
             action (int): 最後に実行された行動
             state (List[int]): 最終状態（盤面のリスト）
             result_value (int): 勝者のチーム値、または引き分けを示す値
         """
-        # 最終状態テンソルを作成
+
         final_state_tensor = make_tensor(state, self.board_side)
-        done = True
+        terminal_transition = {
+            "board_state": final_state_tensor,
+            "actor_team_value": self.my_team_value,
+            "action": action,
+            "reward": 0.0,
+            "next_board_state": None,
+            "next_team_value": None,
+            "done": True,
+            "state": state.copy(),
+            "next_state": None,
+        }
+        self._record_transition(terminal_transition)
 
-        # 最終ステップも一旦 episode_buffer に追加（reward=0.0）
-        self.episode_buffer.append(
-            {
-                "board_state": final_state_tensor,
-                "actor_team_value": self.my_team_value,
-                "action": action,
-                "reward": 0.0,
-                "next_board_state": None,
-                "next_team_value": None,
-                "done": done,
-            }
-        )
-
-        # 中間報酬をチームごとに個別正規化
-
-        # チームごとにトランジションを分ける
-        team_transitions = defaultdict(list)
-        for trans in self.episode_buffer:
-            team_transitions[trans["actor_team_value"]].append(trans)
-        # 各チームの中間報酬を正規化して書き戻し
-        for team, trans_list in team_transitions.items():
-            rewards = [t["reward"] for t in trans_list]
-            normalized_rewards = normalize_intermediate_rewards(rewards)
-            for t, r in zip(trans_list, normalized_rewards):
-                t["reward"] = r
-
-        # 1試合分の全ステップ情報を保持
         episode = list(self.episode_buffer)
         self.episode_buffer.clear()
 
-        # 終局報酬をチームごとに計算
-        final_rewards = {}
+        team_transitions = defaultdict(list)
+        for trans in episode:
+            team_transitions[trans["actor_team_value"]].append(trans)
+        for trans_list in team_transitions.values():
+            rewards = [t["reward"] for t in trans_list]
+            normalized = normalize_intermediate_rewards(rewards)
+            for t, r in zip(trans_list, normalized):
+                t["reward"] = r
+
+        final_rewards: Dict[int, float] = {}
         for team in self.team_value_list:
             if is_win(result_value, team):
                 final_rewards[team] = self.WIN_POINT
@@ -277,6 +398,16 @@ class DQN_Agent(model.Agent_Model):
             self.draw += 1
         else:
             self.lose += 1
+
+        self._emit_hook(
+            EPISODE_FINISHED_HOOK,
+            {
+                "result_value": result_value,
+                "final_rewards": final_rewards,
+                "episode_length": T,
+                "episode_transitions": episode,
+            },
+        )
 
     def learn(self):
         """
