@@ -48,7 +48,9 @@ class FixedAgent(Agent_Model):
     ) -> None:
         pass
 
-    def append_finish_result(self, action: int, state: List[int], result_value: int) -> None:
+    def append_finish_result(
+        self, action: int, state: List[int], result_value: int
+    ) -> None:
         self.game_count += 1
 
     def get_learning_count(self) -> int:
@@ -61,7 +63,9 @@ def test_random_npc_picks_only_empty_cells() -> None:
     agent_a = FixedAgent("A", 0, moves=[0, 4, 8])
     npc = N_Mark_Alignment_random_npc("B", 1)
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, npc])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, npc]
+    )
     env.reset()
     # いくつかのマスを埋める
     env.board[0] = agent_a.get_my_team_value()
@@ -78,7 +82,9 @@ def test_random_npc_selects_only_remaining_cell() -> None:
     agent_a = FixedAgent("A", 0, moves=[0])
     npc = N_Mark_Alignment_random_npc("B", 1)
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, npc])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, npc]
+    )
     env.reset()
     env.board[:] = [
         agent_a.get_my_team_value(),

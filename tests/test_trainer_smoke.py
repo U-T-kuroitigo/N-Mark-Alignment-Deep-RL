@@ -26,7 +26,9 @@ import N_Mark_Alignment_env as env_module  # noqa: E402
 def _create_dqn_agent(board_side: int = 3) -> DQN_Agent:
     """テストで使用する最小構成の DQN エージェントを生成する。"""
     device = torch.device("cpu")
-    policy_net, target_net = set_network(board_side=board_side, num_team_values=2, device=device)
+    policy_net, target_net = set_network(
+        board_side=board_side, num_team_values=2, device=device
+    )
     agent = DQN_Agent("A", 0, True, policy_net, target_net, device)
     agent.player_name = "DQN-A"
     return agent
@@ -41,7 +43,9 @@ def test_trainer_runs_and_saves_model(tmp_path: Path) -> None:
     agent = _create_dqn_agent(board_side)
     npc = N_Mark_Alignment_random_npc("B", 1)
 
-    env = env_module.N_Mark_Alignment_Env(board_side=board_side, reward_line=3, player_list=[agent, npc])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=board_side, reward_line=3, player_list=[agent, npc]
+    )
 
     save_dir = tmp_path / "models"
     saver = ModelSaver(save_dir=str(save_dir))

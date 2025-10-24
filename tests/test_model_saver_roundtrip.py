@@ -23,7 +23,9 @@ from saver.dqn_agent_saver.model_saver import ModelSaver  # noqa: E402
 def _create_agent_with_replay(board_side: int = 3) -> DQN_Agent:
     """保存テスト用の DQN エージェントを生成し、リプレイバッファにダミー遷移を入れておく。"""
     device = torch.device("cpu")
-    policy_net, target_net = set_network(board_side=board_side, num_team_values=2, device=device)
+    policy_net, target_net = set_network(
+        board_side=board_side, num_team_values=2, device=device
+    )
     agent = DQN_Agent("A", 0, True, policy_net, target_net, device)
     agent.player_name = "DQN-A"
     agent.board_side = board_side
@@ -49,7 +51,9 @@ def _create_agent_with_replay(board_side: int = 3) -> DQN_Agent:
 def _create_fresh_agent(board_side: int = 3) -> DQN_Agent:
     """ロード先に使用する新しいエージェントを用意する。"""
     device = torch.device("cpu")
-    policy_net, target_net = set_network(board_side=board_side, num_team_values=2, device=device)
+    policy_net, target_net = set_network(
+        board_side=board_side, num_team_values=2, device=device
+    )
     return DQN_Agent("A", 0, True, policy_net, target_net, device)
 
 
@@ -85,11 +89,14 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
 
     # ネットワークパラメータが一致
     for original, loaded in zip(
-        agent.policy_net.state_dict().values(), loaded_agent.policy_net.state_dict().values()
+        agent.policy_net.state_dict().values(),
+        loaded_agent.policy_net.state_dict().values(),
     ):
         assert torch.equal(original, loaded)
 
     # リプレイバッファが復元されているか（保存時 1 件のみ）
-    assert len(loaded_agent.replay_buffer.buffer) == len(agent.replay_buffer.buffer) == 1
+    assert (
+        len(loaded_agent.replay_buffer.buffer) == len(agent.replay_buffer.buffer) == 1
+    )
     loaded_transition = loaded_agent.replay_buffer.buffer[0]
     assert loaded_transition["reward"] == agent.replay_buffer.buffer[0]["reward"]

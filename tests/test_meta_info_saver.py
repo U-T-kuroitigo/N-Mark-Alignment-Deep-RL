@@ -22,7 +22,9 @@ from saver.dqn_agent_saver.meta_info_saver import MetaInfoSaver  # noqa: E402
 def _create_agent(board_side: int = 3) -> DQN_Agent:
     """メタ情報保存のテストに利用する DQN エージェントを生成する。"""
     device = torch.device("cpu")
-    policy_net, target_net = set_network(board_side=board_side, num_team_values=2, device=device)
+    policy_net, target_net = set_network(
+        board_side=board_side, num_team_values=2, device=device
+    )
     agent = DQN_Agent("A", 0, True, policy_net, target_net, device)
     agent.board_side = board_side
     agent.reward_line = 3

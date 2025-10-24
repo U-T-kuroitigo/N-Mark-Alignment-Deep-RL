@@ -32,7 +32,9 @@ from train.trainer import Trainer
 class DummyAgent(Agent_Model):
     """シンプルな固定手で着手するテスト専用エージェント。"""
 
-    def __init__(self, player_icon: str, player_value: int, moves: list[int] | None = None) -> None:
+    def __init__(
+        self, player_icon: str, player_value: int, moves: list[int] | None = None
+    ) -> None:
         """
         Args:
             player_icon: 盤面表示用のアイコン。
@@ -70,7 +72,9 @@ class DummyAgent(Agent_Model):
     ) -> None:
         """継続結果は管理しない（テスト用途のため no-op）。"""
 
-    def append_finish_result(self, action: int, state: list[int], result_value: int) -> None:
+    def append_finish_result(
+        self, action: int, state: list[int], result_value: int
+    ) -> None:
         """ゲーム完了時に試合数だけ加算する。"""
         self.game_count += 1
 
@@ -84,7 +88,9 @@ def test_environment_step_updates_board() -> None:
     agent_a = DummyAgent("A", 0, moves=[0])
     agent_b = DummyAgent("B", 1, moves=[1])
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, agent_b])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, agent_b]
+    )
     env.player_turn_list = [agent_a, agent_b]
     env.this_turn = 0
     env.reset()
@@ -118,7 +124,9 @@ def test_reward_utils_behaviour() -> None:
     # reach を作るケース
     pre_state_create = [team, -1, -1, -1, -1, -1, -1, -1, -1]
     action_create = 1
-    assert reward_utils.is_reach_created(pre_state_create, action_create, team, board_side, reward_line)
+    assert reward_utils.is_reach_created(
+        pre_state_create, action_create, team, board_side, reward_line
+    )
 
     reward_create = reward_utils.calculate_intermediate_reward(
         pre_state_create,
@@ -134,7 +142,9 @@ def test_reward_utils_behaviour() -> None:
     # 相手の reach をブロックするケース
     opponent_state = [1, 1, -1, -1, -1, -1, -1, -1, -1]
     action_block = 2
-    assert reward_utils.is_reach_blocked(opponent_state, action_block, team, board_side, reward_line)
+    assert reward_utils.is_reach_blocked(
+        opponent_state, action_block, team, board_side, reward_line
+    )
 
     reward_block = reward_utils.calculate_intermediate_reward(
         opponent_state,
@@ -151,7 +161,9 @@ def test_reward_utils_behaviour() -> None:
 def _create_dqn_agent(board_side: int = 3) -> DQN_Agent:
     """テストで使う最小構成の DQN_Agent を生成。"""
     device = torch.device("cpu")
-    policy_net, target_net = set_network(board_side=board_side, num_team_values=2, device=device)
+    policy_net, target_net = set_network(
+        board_side=board_side, num_team_values=2, device=device
+    )
     agent = DQN_Agent("A", 0, True, policy_net, target_net, device)
     agent.player_name = "DQN-A"
     return agent
@@ -164,14 +176,21 @@ def test_trainer_smoke(tmp_path: Path) -> None:
     agent = _create_dqn_agent(board_side)
     npc = N_Mark_Alignment_random_npc("B", 1)
 
-    env = env_module.N_Mark_Alignment_Env(board_side=board_side, reward_line=3, player_list=[agent, npc])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=board_side, reward_line=3, player_list=[agent, npc]
+    )
 
     saver = ModelSaver(save_dir=str(tmp_path / "models"))
     trainer = Trainer(
         env=env,
         agent=agent,
         model_saver=saver,
-        config={"total_episodes": 2, "learn_iterations_per_episode": 1, "save_frequency": 999, "log_frequency": 999},
+        config={
+            "total_episodes": 2,
+            "learn_iterations_per_episode": 1,
+            "save_frequency": 999,
+            "log_frequency": 999,
+        },
         eval_interval=999,
         eval_episodes=1,
     )
@@ -192,7 +211,9 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
     saver = ModelSaver(save_dir=str(tmp_path / "models"))
     model_path = saver.save(agent)
 
-    policy_net_2, target_net_2 = set_network(board_side=3, num_team_values=2, device=device)
+    policy_net_2, target_net_2 = set_network(
+        board_side=3, num_team_values=2, device=device
+    )
     loaded_agent = DQN_Agent("A", 0, True, policy_net_2, target_net_2, device)
     loaded_agent.board_side = 3
     loaded_agent.reward_line = 3
@@ -203,7 +224,10 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
     assert loaded_agent.board_side == 3
     assert all(
         torch.equal(p1, p2)
-        for p1, p2 in zip(agent.policy_net.state_dict().values(), loaded_agent.policy_net.state_dict().values())
+        for p1, p2 in zip(
+            agent.policy_net.state_dict().values(),
+            loaded_agent.policy_net.state_dict().values(),
+        )
     )
 
 
@@ -212,11 +236,16 @@ def test_round_robin_runner(monkeypatch, tmp_path: Path) -> None:
     agent_a = DummyAgent("A", 0, moves=[0, 4, 8])
     agent_b = DummyAgent("B", 1, moves=[1, 2, 5])
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, agent_b])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, agent_b]
+    )
     runner = RoundRobinMatchRunner(env, eval_episodes=1)
 
     monkeypatch.chdir(tmp_path)
     summary = runner.evaluate([agent_a, agent_b])
 
     assert len(summary) == 2
-    assert {entry["agent_name"] for entry in summary} == {agent_a.player_name, agent_b.player_name}
+    assert {entry["agent_name"] for entry in summary} == {
+        agent_a.player_name,
+        agent_b.player_name,
+    }

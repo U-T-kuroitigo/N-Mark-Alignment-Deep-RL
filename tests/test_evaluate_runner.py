@@ -46,7 +46,9 @@ class DummyAgent(Agent_Model):
     ) -> None:
         pass
 
-    def append_finish_result(self, action: int, state: list[int], result_value: int) -> None:
+    def append_finish_result(
+        self, action: int, state: list[int], result_value: int
+    ) -> None:
         self.game_count += 1
         if result_value == self.my_team_value:
             self.win += 1
@@ -59,7 +61,9 @@ class DummyAgent(Agent_Model):
         return 0
 
 
-def test_round_robin_runner_creates_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_round_robin_runner_creates_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
     RoundRobinMatchRunner で 2 エージェントの総当たり戦を実行し、
     結果サマリと CSV ファイルが生成されるか確認する。
@@ -67,14 +71,19 @@ def test_round_robin_runner_creates_summary(tmp_path: Path, monkeypatch: pytest.
     agent_a = DummyAgent("A", 0, moves=[0, 4, 8])
     agent_b = DummyAgent("B", 1, moves=[1, 2, 5])
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, agent_b])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, agent_b]
+    )
     runner = RoundRobinMatchRunner(env, eval_episodes=2)
 
     monkeypatch.chdir(tmp_path)
     summary = runner.evaluate([agent_a, agent_b])
 
     assert len(summary) == 2
-    assert {entry["agent_name"] for entry in summary} == {agent_a.player_name, agent_b.player_name}
+    assert {entry["agent_name"] for entry in summary} == {
+        agent_a.player_name,
+        agent_b.player_name,
+    }
 
     csv_path = Path("evaluate") / "result" / "3_3_2" / "evaluation_history.csv"
     assert csv_path.exists()

@@ -34,7 +34,9 @@ def test_is_reach_created_detects_new_reach() -> None:
     ]
     action = 4  # 中央に打って縦方向に 2 個揃っている状況を完成させる
 
-    assert reward_utils.is_reach_created(state, action, team_value, board_side, reward_line)
+    assert reward_utils.is_reach_created(
+        state, action, team_value, board_side, reward_line
+    )
 
 
 def test_is_reach_blocked_detects_blocking() -> None:
@@ -46,7 +48,9 @@ def test_is_reach_blocked_detects_blocking() -> None:
     opponent_state = [1, 1, -1, -1, -1, -1, -1, -1, -1]
     action = 2
 
-    assert reward_utils.is_reach_blocked(opponent_state, action, team_value, board_side, reward_line)
+    assert reward_utils.is_reach_blocked(
+        opponent_state, action, team_value, board_side, reward_line
+    )
 
 
 def test_intermediate_reward_combines_created_and_blocked() -> None:

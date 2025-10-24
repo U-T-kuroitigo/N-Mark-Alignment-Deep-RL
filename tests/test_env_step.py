@@ -54,7 +54,9 @@ class FixedAgent(Agent_Model):
     ) -> None:
         """継続結果は利用しない。"""
 
-    def append_finish_result(self, action: int, state: List[int], result_value: int) -> None:
+    def append_finish_result(
+        self, action: int, state: List[int], result_value: int
+    ) -> None:
         """勝敗カウントのみ更新。"""
         self.game_count += 1
         if result_value == self.my_team_value:
@@ -74,11 +76,21 @@ def test_step_updates_board_and_turn() -> None:
     agent_a = FixedAgent("A", 0, moves=[0])
     agent_b = FixedAgent("B", 1, moves=[4])
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, agent_b])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, agent_b]
+    )
     env.reset()
     env.player_turn_list = [agent_a, agent_b]  # 順番を固定する
 
-    action, prev_board, next_board, actor_team_value, next_team_value, done, _ = env.step()
+    (
+        action,
+        prev_board,
+        next_board,
+        actor_team_value,
+        next_team_value,
+        done,
+        _,
+    ) = env.step()
 
     assert action == 0
     assert prev_board[action] == env.EMPTY  # 手前は空きマス
@@ -93,7 +105,9 @@ def test_auto_play_finishes_with_winner() -> None:
     agent_a = FixedAgent("A", 0, moves=[0, 4, 8])
     agent_b = FixedAgent("B", 1, moves=[1, 2, 5])
 
-    env = env_module.N_Mark_Alignment_Env(board_side=3, reward_line=3, player_list=[agent_a, agent_b])
+    env = env_module.N_Mark_Alignment_Env(
+        board_side=3, reward_line=3, player_list=[agent_a, agent_b]
+    )
     env.reset_game_rate()
 
     board, _ = env.auto_play()
