@@ -1,0 +1,34 @@
+{
+  "board_side": 3,
+  "reward_line": 3,
+  "eval_episodes": 50,
+  "num_team_values": 2,
+  "record_boards": true,
+  "output_dir": "evaluate/result",
+  "outputs": [
+    "csv",
+    "json"
+  ],
+  "models": [
+    {
+      "path": "agent_model/DQN-Agent_3_3_2/DQN-Agent_3_3_2_45000_202507191701/DQN-Agent_3_3_2_45000_202507191701.pt",
+      "icon": "A",
+      "player_name": "DQN3x3x2_45k_A"
+    },
+    {
+      "path": "agent_model/DQN-Agent_3_3_2/DQN-Agent_3_3_2_45000_202507191701/DQN-Agent_3_3_2_45000_202507191701.pt",
+      "icon": "B",
+      "player_name": "DQN3x3x2_45k_B"
+    },
+    {
+      "path": "agent_model/DQN-Agent_3_3_2/DQN-Agent_3_3_2_45000_202507191701/DQN-Agent_3_3_2_45000_202507191701.pt",
+      "icon": "C",
+      "player_name": "DQN3x3x2_45k_C"
+    },
+    {
+      "path": "agent_model/DQN-Agent_3_3_2/DQN-Agent_3_3_2_45000_202507191701/DQN-Agent_3_3_2_45000_202507191701.pt",
+      "icon": "D",
+      "player_name": "DQN3x3x2_45k_D"
+    }
+  ]
+}

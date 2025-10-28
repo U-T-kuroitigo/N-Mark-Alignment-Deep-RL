@@ -4,6 +4,7 @@ RoundRobinMatchRunner のスモークテスト。
 少数エージェントを用いた対戦が正しくサマリ化され、評価結果 CSV が出力されるか確認する。
 """
 
+import logging
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import N_Mark_Alignment_env as env_module  # noqa: E402
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model  # noqa: E402
+from evaluate.evaluate_models import load_agent_model  # noqa: E402
 from evaluate.round_robin_match_runner import RoundRobinMatchRunner  # noqa: E402
 
 
@@ -74,9 +76,16 @@ def test_round_robin_runner_creates_summary(
     env = env_module.N_Mark_Alignment_Env(
         board_side=3, reward_line=3, player_list=[agent_a, agent_b]
     )
-    runner = RoundRobinMatchRunner(env, eval_episodes=2)
+    result_dir = tmp_path / "evaluate_outputs"
+    runner = RoundRobinMatchRunner(
+        env,
+        eval_episodes=2,
+        logger=logging.getLogger("test.round_robin"),
+        result_dir=result_dir,
+        record_boards=False,
+        write_summary=True,
+    )
 
-    monkeypatch.chdir(tmp_path)
     summary = runner.evaluate([agent_a, agent_b])
 
     assert len(summary) == 2
@@ -85,5 +94,61 @@ def test_round_robin_runner_creates_summary(
         agent_b.player_name,
     }
 
-    csv_path = Path("evaluate") / "result" / "3_3_2" / "evaluation_history.csv"
+    csv_path = result_dir / "3_3_2" / "evaluation_history.csv"
     assert csv_path.exists()
+
+
+def test_load_agent_model_uses_num_team_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    load_agent_model が num_team_values を渡して set_network を呼び出しているか確認する。
+    """
+    calls = []
+
+    def fake_set_network(board_side, num_team_values, device):
+        calls.append((board_side, num_team_values, device))
+        return "policy", "target"
+
+    class DummyAgentLoader:
+        def load(self, filepath, dummy_agent, load_replay=False):
+            return dummy_agent
+
+    class LoaderDummyAgent:
+        """load_agent_model で生成するダミーエージェント。"""
+
+        def __init__(
+            self,
+            player_icon,
+            player_value,
+            learning,
+            policy_net,
+            target_net,
+            device,
+        ):
+            self.player_icon = player_icon
+            self.player_value = player_value
+            self.learning = learning
+            self.policy_net = policy_net
+            self.target_net = target_net
+            self.device = device
+
+        def set_learning(self, learning):
+            self.learning = learning
+
+    class FakeEmbedding:
+        shape = (6, 16)
+
+    monkeypatch.setattr("evaluate.evaluate_models.set_network", fake_set_network)
+    monkeypatch.setattr(
+        "evaluate.evaluate_models.ModelSaver", lambda: DummyAgentLoader()
+    )
+    monkeypatch.setattr("evaluate.evaluate_models.DQN_Agent", LoaderDummyAgent)
+    monkeypatch.setattr(
+        "evaluate.evaluate_models.torch.load",
+        lambda *args, **kwargs: {"team_embedding.weight": FakeEmbedding()},
+    )
+
+    load_agent_model("dummy.pt", board_side=3, reward_line=3, num_team_values=4)
+
+    assert calls, "set_network が呼ばれていない"
+    _, num_team_values_called, _ = calls[0]
+    assert num_team_values_called == 5

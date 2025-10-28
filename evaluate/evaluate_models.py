@@ -4,13 +4,18 @@ evaluate_models.py
 保存済みモデル同士を総当たりで対戦させ、評価結果を表示・保存するスクリプト。
 """
 
-# ========= 定数定義 ========= #
-BOARD_SIDE: int = 3  # 盤面サイズ
-REWARD_LINE: int = 3  # N目並べのN
-EVAL_EPISODES: int = 200  # 各対戦の試行回数
+from __future__ import annotations
 
-# ========= モジュールインポート ========= #
+import argparse
+import json
+import logging
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional
+import csv
+
 import torch
+
 from agent.dqn.dqn_agent import DQN_Agent
 from saver.dqn_agent_saver.model_saver import ModelSaver
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model
@@ -20,324 +25,158 @@ from agent.network.q_network import QNetwork
 from agent.network.q_network import set_network  # ネットワーク初期化関数
 from agent.playable_agent import PlayableAgent
 
+# ========= 定数定義 ========= #
+DEFAULT_BOARD_SIDE: int = 3  # 盤面サイズ
+DEFAULT_REWARD_LINE: int = 3  # N目並べのN
+DEFAULT_EVAL_EPISODES: int = 200  # 各対戦の試行回数
 
-# ========= 評価対象モデルの定義 ========= #
+
+@dataclass
+class ModelEntry:
+    """
+    評価対象モデルの設定。
+    """
+
+    path: str
+    icon: str
+    player_name: str
+
+
+@dataclass
+class EvaluationConfig:
+    """
+    評価実行時の設定をまとめたデータクラス。
+    """
+
+    board_side: int
+    reward_line: int
+    eval_episodes: int
+    models: List[ModelEntry]
+    num_team_values: int = 2
+    output_dir: Path = Path("evaluate") / "result"
+    record_boards: bool = False
+    outputs: List[str] = field(default_factory=lambda: ["csv"])
+
+    @classmethod
+    def from_json(cls, path: Path) -> "EvaluationConfig":
+        """
+        JSON ファイルから EvaluationConfig を生成する。
+
+        Args:
+            path (Path): 設定ファイルのパス。
+
+        Returns:
+            EvaluationConfig: 生成された設定インスタンス。
+        """
+        data = json.loads(path.read_text(encoding="utf-8"))
+        models = [ModelEntry(**entry) for entry in data["models"]]
+        return cls(
+            board_side=data["board_side"],
+            reward_line=data["reward_line"],
+            eval_episodes=data["eval_episodes"],
+            num_team_values=data.get("num_team_values", 2),
+            models=models,
+            output_dir=Path(data.get("output_dir", "evaluate/result")),
+            record_boards=data.get("record_boards", False),
+            outputs=data.get("outputs", ["csv"]),
+        )
+
+
 def get_model_list() -> list:
     """
     評価対象となるモデルファイルとプレイヤー記号を指定。
     """
 
-    # DQN-Agent_3_3_2
-    list_3_3_2 = [
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_5000_202507191601\DQN-Agent_3_3_2_5000_202507191601.pt",
-            "icon": "A",
-            "player_name": "DQN3x3x2_5k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_10000_202507191606\DQN-Agent_3_3_2_10000_202507191606.pt",
-            "icon": "B",
-            "player_name": "DQN3x3x2_10k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_15000_202507191613\DQN-Agent_3_3_2_15000_202507191613.pt",
-            "icon": "C",
-            "player_name": "DQN3x3x2_15k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_20000_202507191620\DQN-Agent_3_3_2_20000_202507191620.pt",
-            "icon": "D",
-            "player_name": "DQN3x3x2_20k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_25000_202507191628\DQN-Agent_3_3_2_25000_202507191628.pt",
-            "icon": "E",
-            "player_name": "DQN3x3x2_25k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_30000_202507191636\DQN-Agent_3_3_2_30000_202507191636.pt",
-            "icon": "F",
-            "player_name": "DQN3x3x2_30k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_35000_202507191644\DQN-Agent_3_3_2_35000_202507191644.pt",
-            "icon": "G",
-            "player_name": "DQN3x3x2_35k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_40000_202507191652\DQN-Agent_3_3_2_40000_202507191652.pt",
-            "icon": "H",
-            "player_name": "DQN3x3x2_40k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_45000_202507191701\DQN-Agent_3_3_2_45000_202507191701.pt",
-            "icon": "I",
-            "player_name": "DQN3x3x2_45k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_50000_202507191710\DQN-Agent_3_3_2_50000_202507191710.pt",
-            "icon": "J",
-            "player_name": "DQN3x3x2_50k",
-        },
-    ]
-
-    # DQN-Agent_5_3_2
-    list_5_3_2 = [
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_5000_202507191857\DQN-Agent_5_3_2_5000_202507191857.pt",
-            "icon": "A",
-            "player_name": "DQN5x3x2_5k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_10000_202507191905\DQN-Agent_5_3_2_10000_202507191905.pt",
-            "icon": "B",
-            "player_name": "DQN5x3x2_10k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_15000_202507191913\DQN-Agent_5_3_2_15000_202507191913.pt",
-            "icon": "C",
-            "player_name": "DQN5x3x2_15k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_20000_202507191923\DQN-Agent_5_3_2_20000_202507191923.pt",
-            "icon": "D",
-            "player_name": "DQN5x3x2_20k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_25000_202507191931\DQN-Agent_5_3_2_25000_202507191931.pt",
-            "icon": "E",
-            "player_name": "DQN5x3x2_25k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_30000_202507191940\DQN-Agent_5_3_2_30000_202507191940.pt",
-            "icon": "F",
-            "player_name": "DQN5x3x2_30k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_35000_202507191950\DQN-Agent_5_3_2_35000_202507191950.pt",
-            "icon": "G",
-            "player_name": "DQN5x3x2_35k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_40000_202507191959\DQN-Agent_5_3_2_40000_202507191959.pt",
-            "icon": "H",
-            "player_name": "DQN5x3x2_40k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_45000_202507192008\DQN-Agent_5_3_2_45000_202507192008.pt",
-            "icon": "I",
-            "player_name": "DQN5x3x2_45k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_50000_202507192018\DQN-Agent_5_3_2_50000_202507192018.pt",
-            "icon": "J",
-            "player_name": "DQN5x3x2_50k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_55000_202507192028\DQN-Agent_5_3_2_55000_202507192028.pt",
-            "icon": "K",
-            "player_name": "DQN5x3x2_55k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_60000_202507192038\DQN-Agent_5_3_2_60000_202507192038.pt",
-            "icon": "L",
-            "player_name": "DQN5x3x2_60k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_65000_202507192048\DQN-Agent_5_3_2_65000_202507192048.pt",
-            "icon": "M",
-            "player_name": "DQN5x3x2_65k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_70000_202507192058\DQN-Agent_5_3_2_70000_202507192058.pt",
-            "icon": "N",
-            "player_name": "DQN5x3x2_70k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_75000_202507192109\DQN-Agent_5_3_2_75000_202507192109.pt",
-            "icon": "O",
-            "player_name": "DQN5x3x2_75k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_80000_202507192119\DQN-Agent_5_3_2_80000_202507192119.pt",
-            "icon": "P",
-            "player_name": "DQN5x3x2_80k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_85000_202507192130\DQN-Agent_5_3_2_85000_202507192130.pt",
-            "icon": "Q",
-            "player_name": "DQN5x3x2_85k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_90000_202507192140\DQN-Agent_5_3_2_90000_202507192140.pt",
-            "icon": "R",
-            "player_name": "DQN5x3x2_90k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_95000_202507192152\DQN-Agent_5_3_2_95000_202507192152.pt",
-            "icon": "S",
-            "player_name": "DQN5x3x2_95k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_100000_202507192203\DQN-Agent_5_3_2_100000_202507192203.pt",
-            "icon": "T",
-            "player_name": "DQN5x3x2_100k",
-        },
-    ]
-
-    # DQN-Agent_9_5_2
-    list_9_5_2 = [
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_5000_202507200416\DQN-Agent_9_5_2_5000_202507200416.pt",
-            "icon": "A",
-            "player_name": "DQN9x5x2_5k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_10000_202507200435\DQN-Agent_9_5_2_10000_202507200435.pt",
-            "icon": "B",
-            "player_name": "DQN9x5x2_10k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_15000_202507200456\DQN-Agent_9_5_2_15000_202507200456.pt",
-            "icon": "C",
-            "player_name": "DQN9x5x2_15k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_20000_202507200518\DQN-Agent_9_5_2_20000_202507200518.pt",
-            "icon": "D",
-            "player_name": "DQN9x5x2_20k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_25000_202507200539\DQN-Agent_9_5_2_25000_202507200539.pt",
-            "icon": "E",
-            "player_name": "DQN9x5x2_25k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_30000_202507200602\DQN-Agent_9_5_2_30000_202507200602.pt",
-            "icon": "F",
-            "player_name": "DQN9x5x2_30k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_35000_202507200623\DQN-Agent_9_5_2_35000_202507200623.pt",
-            "icon": "G",
-            "player_name": "DQN9x5x2_35k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_40000_202507200646\DQN-Agent_9_5_2_40000_202507200646.pt",
-            "icon": "H",
-            "player_name": "DQN9x5x2_40k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_45000_202507200710\DQN-Agent_9_5_2_45000_202507200710.pt",
-            "icon": "I",
-            "player_name": "DQN9x5x2_45k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_50000_202507200733\DQN-Agent_9_5_2_50000_202507200733.pt",
-            "icon": "J",
-            "player_name": "DQN9x5x2_50k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_55000_202507200757\DQN-Agent_9_5_2_55000_202507200757.pt",
-            "icon": "K",
-            "player_name": "DQN9x5x2_55k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_60000_202507200821\DQN-Agent_9_5_2_60000_202507200821.pt",
-            "icon": "L",
-            "player_name": "DQN9x5x2_60k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_65000_202507200845\DQN-Agent_9_5_2_65000_202507200845.pt",
-            "icon": "M",
-            "player_name": "DQN9x5x2_65k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_70000_202507200910\DQN-Agent_9_5_2_70000_202507200910.pt",
-            "icon": "N",
-            "player_name": "DQN9x5x2_70k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_75000_202507200935\DQN-Agent_9_5_2_75000_202507200935.pt",
-            "icon": "O",
-            "player_name": "DQN9x5x2_75k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_80000_202507201000\DQN-Agent_9_5_2_80000_202507201000.pt",
-            "icon": "P",
-            "player_name": "DQN9x5x2_80k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_85000_202507201026\DQN-Agent_9_5_2_85000_202507201026.pt",
-            "icon": "Q",
-            "player_name": "DQN9x5x2_85k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_90000_202507201051\DQN-Agent_9_5_2_90000_202507201051.pt",
-            "icon": "R",
-            "player_name": "DQN9x5x2_90k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_95000_202507201116\DQN-Agent_9_5_2_95000_202507201116.pt",
-            "icon": "S",
-            "player_name": "DQN9x5x2_95k",
-        },
-        {
-            "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_100000_202507201141\DQN-Agent_9_5_2_100000_202507201141.pt",
-            "icon": "T",
-            "player_name": "DQN9x5x2_100k",
-        },
-    ]
-
-    # 各一番性能が高かったモデル
     most_performing_model = [
-        # DQN-Agent_3_3_2
-        # {
-        #     "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_45000_202507191701\DQN-Agent_3_3_2_45000_202507191701.pt",
-        #     "icon": "I",
-        #     "player_name": "DQN3x3x2_45k",
-        # },
         {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_45000_202507191701\DQN-Agent_3_3_2_45000_202507191701.pt",
+            "path": "agent_model\\DQN-Agent_3_3_2\\DQN-Agent_3_3_2_45000_202507191701\\DQN-Agent_3_3_2_45000_202507191701.pt",
             "icon": "IA",
             "player_name": "DQN3x3x2_45k_A",
         },
         {
-            "path": "agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_45000_202507191701\DQN-Agent_3_3_2_45000_202507191701.pt",
+            "path": "agent_model\\DQN-Agent_3_3_2\\DQN-Agent_3_3_2_45000_202507191701\\DQN-Agent_3_3_2_45000_202507191701.pt",
             "icon": "IB",
             "player_name": "DQN3x3x2_45k_B",
         },
-        #
-        #
-        #
-        # DQN-Agent_5_3_2
-        # {
-        #     "path": "agent_model\DQN-Agent_5_3_2\DQN-Agent_5_3_2_60000_202507192038\DQN-Agent_5_3_2_60000_202507192038.pt",
-        #     "icon": "L",
-        #     "player_name": "DQN5x3x2_60k",
-        # },
-        #
-        #
-        # DQN-Agent_9_5_2
-        # {
-        #     "path": "agent_model\DQN-Agent_9_5_2\DQN-Agent_9_5_2_100000_202507201141\DQN-Agent_9_5_2_100000_202507201141.pt",
-        #     "icon": "T",
-        #     "player_name": "DQN9x5x2_100k",
-        # },
     ]
 
-    # return list_3_3_2
-    # return list_5_3_2
-    # return list_9_5_2
     return most_performing_model
 
 
-# ========= モデル読込関数 ========= #
-def load_agent_model(filepath: str) -> DQN_Agent:
-    # デバイス設定
+def build_default_config() -> EvaluationConfig:
+    """
+    従来の定数・モデル一覧から EvaluationConfig を生成する。
+
+    Returns:
+        EvaluationConfig: 既定値を用いた設定。
+    """
+    models = [ModelEntry(**entry) for entry in get_model_list()]
+    return EvaluationConfig(
+        board_side=DEFAULT_BOARD_SIDE,
+        reward_line=DEFAULT_REWARD_LINE,
+        eval_episodes=DEFAULT_EVAL_EPISODES,
+        num_team_values=2,
+        models=models,
+    )
+
+
+def _load_metadata_from_model_path(model_path: Path) -> Dict[str, Any]:
+    """
+    モデルファイルと同じディレクトリに保存されたメタ情報を読み込む。
+
+    Args:
+        model_path (Path): モデルファイル (.pt) のパス。
+
+    Returns:
+        Dict[str, Any]: メタデータ。存在しない場合は空 dict。
+    """
+    meta_path = model_path.parent / "meta" / f"{model_path.stem}.json"
+    if meta_path.exists():
+        try:
+            return json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def load_agent_model(
+    filepath: str, board_side: int, reward_line: int, num_team_values: int
+) -> DQN_Agent:
+    """
+    モデルファイルから DQN エージェントを復元する。
+
+    Args:
+        filepath (str): モデルファイルのパス。
+        board_side (int): 盤面サイズ。
+        reward_line (int): 勝利条件。
+        num_team_values (int): 登場チーム数。
+
+    Returns:
+        DQN_Agent: 復元されたエージェント。
+    """
+    filepath_path = Path(filepath)
+    metadata = _load_metadata_from_model_path(filepath_path)
+    board_side = metadata.get("board_side", board_side)
+    reward_line = metadata.get("reward_line", reward_line)
+    if "team_value_list" in metadata and isinstance(metadata["team_value_list"], list):
+        num_team_values = len(metadata["team_value_list"])
+    elif "team_list" in metadata and isinstance(metadata["team_list"], list):
+        num_team_values = len(metadata["team_list"])
+    elif "team_count" in metadata:
+        num_team_values = int(metadata["team_count"])
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # ネットワーク定義と初期化
-    policy_net, target_net = set_network(BOARD_SIDE, device)
+    try:
+        state_dict = torch.load(filepath, map_location="cpu")
+    except Exception:  # pragma: no cover - 読み込み失敗時は設定値を使用
+        state_dict = None
+    else:
+        embedding = state_dict.get("team_embedding.weight")
+        if embedding is not None:
+            inferred = max(embedding.shape[0] - 1, 1)
+            num_team_values = inferred
+
+    policy_net, target_net = set_network(board_side, num_team_values, device)
 
     dummy_agent = DQN_Agent(
         player_icon="?",
@@ -348,64 +187,188 @@ def load_agent_model(filepath: str) -> DQN_Agent:
         device=device,
     )
 
-    # MetaSaver.load() に備えて最低限の属性を持たせる（仮値でOK）
-    dummy_agent.reward_line = REWARD_LINE
-    dummy_agent.board_side = BOARD_SIDE
-    dummy_agent.team_value_list = [1, 2]  # 仮チームリスト
+    dummy_agent.reward_line = reward_line
+    dummy_agent.board_side = board_side
+    if "team_value_list" in metadata and isinstance(metadata["team_value_list"], list):
+        dummy_agent.team_value_list = metadata["team_value_list"]
+    elif "team_list" in metadata and isinstance(metadata["team_list"], list):
+        dummy_agent.team_value_list = metadata["team_list"]
+    else:
+        dummy_agent.team_value_list = list(range(num_team_values))
 
     agent = ModelSaver().load(filepath, dummy_agent, load_replay=False)
     agent.set_learning(False)
     return agent
 
 
-# ========= メイン評価実行部 ========= #
+def create_argument_parser() -> argparse.ArgumentParser:
+    """
+    コマンドライン引数のパーサを生成する。
+
+    Returns:
+        argparse.ArgumentParser: 構成済みのパーサ。
+    """
+    parser = argparse.ArgumentParser(description="Run round-robin evaluation.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="評価設定を記載した JSON ファイルのパス。",
+    )
+    parser.add_argument(
+        "--output",
+        action="append",
+        choices=["csv", "json"],
+        help="出力フォーマット（複数指定可）。指定がなければ設定ファイルの値を使用。",
+    )
+    parser.add_argument(
+        "--record-boards",
+        action="store_true",
+        help="各試合の盤面ログを出力する場合に指定。",
+    )
+    parser.add_argument(
+        "--no-record-boards",
+        action="store_true",
+        help="設定ファイルより盤面ログ出力を無効化したい場合に指定。",
+    )
+    return parser
+
+
+def write_outputs(
+    summary: List[Dict[str, float]],
+    config: EvaluationConfig,
+    player_count: int,
+    outputs: List[str],
+    logger: logging.Logger,
+) -> None:
+    """
+    評価結果を指定されたフォーマットで保存する。
+
+    Args:
+        summary (List[Dict[str, float]]): 集計結果。
+        config (EvaluationConfig): 評価設定。
+        player_count (int): 評価対象エージェント数。
+        outputs (List[str]): 出力フォーマット一覧。
+        logger (logging.Logger): ロガー。
+    """
+    base_dir = (
+        config.output_dir / f"{config.board_side}_{config.reward_line}_{player_count}"
+    )
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    if "csv" in outputs:
+        csv_path = base_dir / "evaluation_history.csv"
+        with csv_path.open(mode="w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(
+                ["agent_name", "episode", "win_rate", "lose_rate", "draw_rate"]
+            )
+            for entry in summary:
+                writer.writerow(
+                    [
+                        entry["agent_name"],
+                        entry["episode"],
+                        f"{entry['win_rate']:.1f}",
+                        f"{entry['lose_rate']:.1f}",
+                        f"{entry['draw_rate']:.1f}",
+                    ]
+                )
+        logger.info("評価結果を CSV として保存しました: %s", csv_path)
+
+    if "json" in outputs:
+        json_path = base_dir / "evaluation_history.json"
+        json_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info("評価結果を JSON として保存しました: %s", json_path)
+
+
+def build_logger() -> logging.Logger:
+    """
+    評価スクリプト用ロガーを生成する。
+
+    Returns:
+        logging.Logger: INFO レベルのロガー。
+    """
+    logger = logging.getLogger(__name__ + ".evaluate")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return logger
+
+
 def main() -> None:
-    # モデルロード
-    model_list = []
-    for idx, info in enumerate(get_model_list()):
-        agent = load_agent_model(info["path"])
-        agent.set_player_icon(info["icon"])
+    parser = create_argument_parser()
+    args = parser.parse_args()
+
+    if args.config:
+        config = EvaluationConfig.from_json(args.config)
+    else:
+        config = build_default_config()
+
+    outputs = args.output if args.output else config.outputs
+    record_boards = config.record_boards
+    if args.record_boards:
+        record_boards = True
+    if args.no_record_boards:
+        record_boards = False
+
+    logger = build_logger()
+
+    model_list: List[Agent_Model] = []
+    for idx, entry in enumerate(config.models):
+        agent = load_agent_model(
+            entry.path, config.board_side, config.reward_line, config.num_team_values
+        )
+        agent.set_player_icon(entry.icon)
         agent.set_player_value(idx)
-        agent.player_name = info["player_name"]
+        agent.player_name = entry.player_name
         model_list.append(agent)
 
-    # temp = model_list[0]
-    # model_list.insert(0, model_list.pop(1))
-    # model_list.insert(1, temp)
+    if len(model_list) < 2:
+        logger.warning("評価対象モデルが 2 体未満のため、評価を実行できません。")
+        return
 
-    # プレイアブルエージェントを追加
-    # playable_agent = PlayableAgent("PL", 99)
-    # playable_agent.player_name = "Player"
-    # model_list.append(playable_agent)
-
-    # 環境作成（使い回し）
     env = N_Mark_Alignment_Env(
-        board_side=BOARD_SIDE,
-        reward_line=REWARD_LINE,
-        player_list=model_list[:2],  # 仮で2人渡す（run_match時に毎回上書きされる）
+        board_side=config.board_side,
+        reward_line=config.reward_line,
+        player_list=model_list[:2],
     )
 
-    # ランナー生成
-    runner = RoundRobinMatchRunner(env=env, eval_episodes=EVAL_EPISODES)
+    runner = RoundRobinMatchRunner(
+        env=env,
+        eval_episodes=config.eval_episodes,
+        logger=logger,
+        result_dir=config.output_dir,
+        record_boards=record_boards,
+        write_summary=False,
+    )
 
-    # 総当たり評価開始
     summary = runner.evaluate(model_list)
+    player_count = len(env.get_player_list())
 
-    # ===== 正しいランキング集計（両者に反映） =====
-
-    # ─── ランキング表示 ───
-    print("\n=== ランキング ===")
-    # 「勝率 - 敗率」が大きい順にソート
     ranking = sorted(
         summary, key=lambda x: x["win_rate"] - x["lose_rate"], reverse=True
     )
-    for i, entry in enumerate(ranking, start=1):
-        print(
-            f"{i}. {entry['agent_name']}({entry['agent_icon']}): "
-            f"win={entry['win_rate']:.1f}%, "
-            f"lose={entry['lose_rate']:.1f}%, "
-            f"draw={entry['draw_rate']:.1f}%"
+    for idx, entry in enumerate(ranking, start=1):
+        logger.info(
+            "%d. %s(%s): win=%.1f%% lose=%.1f%% draw=%.1f%%",
+            idx,
+            entry["agent_name"],
+            entry["agent_icon"],
+            entry["win_rate"],
+            entry["lose_rate"],
+            entry["draw_rate"],
         )
+
+    write_outputs(summary, config, player_count, outputs, logger)
 
 
 if __name__ == "__main__":
