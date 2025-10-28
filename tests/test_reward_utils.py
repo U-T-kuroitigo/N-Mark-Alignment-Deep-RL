@@ -98,3 +98,56 @@ def test_normalize_intermediate_rewards_scales_values() -> None:
     normalized = reward_utils.normalize_intermediate_rewards(rewards)
     assert pytest.approx(sum(normalized)) == 1.0
     assert normalized == pytest.approx([0.25, 0.5, 0.25])
+
+
+def test_find_two_step_reach_positions_returns_all_candidates() -> None:
+    """4×4 盤で二手リーチが 2 か所存在するケースを検証する。"""
+    board_side = 4
+    reward_line = 4
+    team_value = 1
+    state = [
+        team_value,
+        team_value,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+    ]
+
+    positions = reward_utils.find_two_step_reach_positions(
+        state, team_value, board_side, reward_line
+    )
+    assert positions == {2, 3}
+
+
+def test_find_direct_reach_positions_detects_diagonal_reach() -> None:
+    """斜め方向のリーチ位置が正しく検出されることを確認する。"""
+    board_side = 3
+    reward_line = 3
+    team_value = 2
+    state = [
+        team_value,
+        -1,
+        -1,
+        -1,
+        team_value,
+        -1,
+        -1,
+        -1,
+        -1,
+    ]
+
+    positions = reward_utils.find_direct_reach_positions(
+        state, team_value, board_side, reward_line
+    )
+    assert positions == {8}
