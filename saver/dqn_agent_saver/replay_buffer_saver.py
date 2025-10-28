@@ -1,10 +1,10 @@
 import os
 import pickle
 from typing import Dict, Any
+
 from agent.buffer.replay_buffer import ReplayBuffer
-from agent.utils.model_version_utils import make_version_dir_and_filename
 from agent.dqn.dqn_agent import DQN_Agent
-from datetime import datetime
+from agent.utils.model_version_utils import ModelVersionPaths
 
 
 class ReplayBufferSaver:
@@ -23,8 +23,7 @@ class ReplayBufferSaver:
     def save(
         self,
         agent: DQN_Agent,
-        root_dir: str = "agent_model",
-        timestamp: datetime = None,
+        version_paths: ModelVersionPaths,
     ) -> str:
         """
         DQN_Agent インスタンスから ReplayBuffer を取得し、
@@ -32,19 +31,15 @@ class ReplayBufferSaver:
 
         Args:
             agent (DQN_Agent): 保存対象のエージェントインスタンス
-            root_dir (str): モデルを保存するルートディレクトリ
+            version_paths (ModelVersionPaths): 保存先バージョンディレクトリ情報
 
         Returns:
             str: 保存された ReplayBuffer ファイルのパス
         """
-        metadata: Dict[str, Any] = agent.get_metadata()
-        _, version_dir, base_filename = make_version_dir_and_filename(
-            metadata, root_dir, timestamp
-        )
-        replay_dir = os.path.join(version_dir, "replay")
+        replay_dir = os.path.join(version_paths.version_dir, "replay")
         os.makedirs(replay_dir, exist_ok=True)
         replay_buffer: ReplayBuffer = getattr(agent, "replay_buffer", None)
-        path = os.path.join(replay_dir, f"{base_filename}.pkl")
+        path = os.path.join(replay_dir, f"{version_paths.base_filename}.pkl")
         with open(path, "wb") as f:
             pickle.dump(replay_buffer.buffer, f)
         return path

@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import N_Mark_Alignment_env as env_module  # noqa: E402
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model  # noqa: E402
-from evaluate.evaluate_models import load_agent_model  # noqa: E402
+from evaluate.evaluate_models import EvaluationConfig, load_agent_model  # noqa: E402
 from evaluate.round_robin_match_runner import RoundRobinMatchRunner  # noqa: E402
 
 
@@ -152,3 +152,30 @@ def test_load_agent_model_uses_num_team_values(monkeypatch: pytest.MonkeyPatch) 
     assert calls, "set_network が呼ばれていない"
     _, num_team_values_called, _ = calls[0]
     assert num_team_values_called == 5
+
+
+def test_evaluation_config_accepts_windows_style_paths(tmp_path: Path) -> None:
+    """Windows 形式の相対パスをそのまま貼り付けた JSON でも読み込めることを確認する。"""
+    config_text = r"""
+{
+  "board_side": 3,
+  "reward_line": 3,
+  "eval_episodes": 1,
+  "num_team_values": 2,
+  "record_boards": false,
+  "output_dir": "evaluate/result",
+  "models": [
+    {
+      "path": "agent_model\DQN-Agent_3_3_2\foo.pt",
+      "icon": "A",
+      "player_name": "ModelA"
+    }
+  ]
+}
+"""
+    config_path = tmp_path / "config.json"
+    config_path.write_text(config_text.strip(), encoding="utf-8")
+
+    config = EvaluationConfig.from_json(config_path)
+
+    assert config.models[0].path == "agent_model/DQN-Agent_3_3_2/foo.pt"

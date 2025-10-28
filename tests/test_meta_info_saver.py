@@ -17,6 +17,9 @@ torch = pytest.importorskip("torch")
 from agent.dqn.dqn_agent import DQN_Agent  # noqa: E402
 from agent.network.q_network import set_network  # noqa: E402
 from saver.dqn_agent_saver.meta_info_saver import MetaInfoSaver  # noqa: E402
+from agent.utils.model_version_utils import (
+    make_version_dir_and_filename,
+)  # noqa: E402
 
 
 def _create_agent(board_side: int = 3) -> DQN_Agent:
@@ -39,8 +42,12 @@ def test_meta_info_saver_roundtrip(tmp_path: Path) -> None:
     agent = _create_agent()
     saver = MetaInfoSaver()
 
+    version_paths = make_version_dir_and_filename(
+        agent.get_metadata(), root_dir=str(tmp_path)
+    )
+
     # 保存
-    meta_path = saver.save(agent, root_dir=str(tmp_path))
+    meta_path = saver.save(agent, version_paths)
     assert Path(meta_path).exists()
 
     # ファイル内容を直接チェック
@@ -64,3 +71,20 @@ def test_meta_info_saver_roundtrip(tmp_path: Path) -> None:
     assert loaded_agent.board_side == agent.board_side
     assert loaded_agent.reward_line == agent.reward_line
     assert loaded_agent.learning_count == agent.learning_count
+
+
+def test_meta_info_saver_with_extra_metadata(tmp_path: Path) -> None:
+    """追加メタ情報を指定した場合に JSON に追記されることを検証する。"""
+    agent = _create_agent()
+    saver = MetaInfoSaver()
+
+    version_paths = make_version_dir_and_filename(
+        agent.get_metadata(), root_dir=str(tmp_path)
+    )
+    extra = {"xai_summary": {"saliency_mean": 0.12}}
+
+    meta_path = saver.save(agent, version_paths, extra_metadata=extra)
+    with open(meta_path, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+
+    assert metadata["xai_summary"]["saliency_mean"] == 0.12
