@@ -1,3 +1,5 @@
+import logging
+from collections import defaultdict
 import numpy as np
 import random
 from enum import Enum
@@ -7,7 +9,12 @@ import math
 import pickle
 import random
 import agent.model.N_Mark_Alignment_agent_model as agent_model
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
+
+BEFORE_STEP_HOOK = "before_step"
+AFTER_STEP_HOOK = "after_step"
 
 
 class N_Mark_Alignment_Env:
@@ -31,6 +38,13 @@ class N_Mark_Alignment_Env:
 
         self.create_team_data()
         self.throw_init_data()
+
+        # フック管理およびステップ履歴（XAI 用ログ）を初期化
+        self._hooks: Dict[str, List[Callable[[Dict[str, Any]], None]]] = defaultdict(
+            list
+        )
+        self.step_history: List[Dict[str, Any]] = []
+        self.last_step_context: Optional[Dict[str, Any]] = None
 
         self.shuffle_turn_list()
         self.reset()
@@ -73,10 +87,141 @@ class N_Mark_Alignment_Env:
         環境を初期状態にリセットする関数。
         盤面、前の盤面、ターン情報をリセットし、
         プレイヤーに初期化データを提供する。
+
+        Args:
+            なし
+
+        Returns:
+            None
         """
         self.reset_board()
         self.reset_prev()
         self.reset_turn()
+        # ステップ履歴・直近コンテキストをリセット
+        self.step_history.clear()
+        self.last_step_context = None
+
+    # --- フック関連ユーティリティ ---
+    def register_hook(
+        self, event: str, callback: Callable[[Dict[str, Any]], None]
+    ) -> None:
+        """
+        指定イベントに対してフック（コールバック）を登録する。
+
+        Args:
+            event (str): フック対象のイベント名（例: BEFORE_STEP_HOOK）。
+            callback (Callable[[Dict[str, Any]], None]): 呼び出されるコールバック。
+
+        Returns:
+            None
+        """
+
+        if not isinstance(event, str):
+            raise TypeError("event must be str")
+        if not callable(callback):
+            raise TypeError("callback must be callable")
+        self._hooks[event].append(callback)
+
+    def remove_hook(
+        self, event: str, callback: Callable[[Dict[str, Any]], None]
+    ) -> None:
+        """
+        登録済みフックのうち一致するものを解除する。
+        対象が存在しない場合は何もしない。
+
+        Args:
+            event (str): フックを解除したいイベント名。
+            callback (Callable[[Dict[str, Any]], None]): 解除対象のコールバック。
+
+        Returns:
+            None
+        """
+
+        callbacks = self._hooks.get(event)
+        if not callbacks:
+            return
+        try:
+            callbacks.remove(callback)
+        except ValueError:
+            return
+        if not callbacks:
+            self._hooks.pop(event, None)
+
+    def clear_hooks(self, event: Optional[str] = None) -> None:
+        """
+        登録済みフックをまとめて削除する。
+
+        Args:
+            event (Optional[str]): 指定するとそのイベントのみ削除。None なら全イベント。
+
+        Returns:
+            None
+        """
+
+        if event is None:
+            self._hooks.clear()
+        else:
+            self._hooks.pop(event, None)
+
+    def get_step_history(self) -> List[Dict[str, Any]]:
+        """
+        記録済みのステップ履歴を取得する。
+
+        Args:
+            なし
+
+        Returns:
+            List[Dict[str, Any]]: 各ターンの行動コンテキストをまとめたリスト。
+        """
+
+        return list(self.step_history)
+
+    def clear_step_history(self) -> None:
+        """
+        ステップ履歴と直近のステップ情報を明示的にクリアする。
+
+        Args:
+            なし
+
+        Returns:
+            None
+        """
+
+        self.step_history.clear()
+        self.last_step_context = None
+
+    def _emit_hook(self, event: str, payload: Dict[str, Any]) -> None:
+        """
+        登録済みコールバックへイベント情報を通知する。
+
+        Args:
+            event (str): 発火させるイベント名。
+            payload (Dict[str, Any]): コールバックへ渡すコンテキスト情報。
+
+        Returns:
+            None
+        """
+
+        for callback in list(self._hooks.get(event, [])):
+            try:
+                callback(payload)
+            except Exception:  # pragma: no cover
+                logger.exception("hook '%s' raised an exception", event)
+
+    def _record_step(self, context: Dict[str, Any]) -> None:
+        """
+        ステップ情報を履歴へ保存し、AFTER_STEP_HOOK を発火させる。
+
+        Args:
+            context (Dict[str, Any]): 1 ステップ分の行動コンテキスト。
+
+        Returns:
+            None
+        """
+
+        self.step_history.append(context)
+        self.last_step_context = context
+        self._emit_hook(AFTER_STEP_HOOK, context)
 
     # 順番をシャッフルする関数
     def shuffle_turn_list(self):
@@ -88,8 +233,12 @@ class N_Mark_Alignment_Env:
         主に外部からプレイヤー構成を変えて再試行する用途で使用する。
 
         Args:
-            new_player_list (list[Agent_Model]): 新しいプレイヤーインスタンスのリスト
+            player_list (list[Agent_Model]): 新しいプレイヤーインスタンスのリスト。
+
+        Returns:
+            None
         """
+
         self.PLAYER_LIST = player_list
         self.create_team_data()
         self.throw_init_data()
@@ -263,28 +412,41 @@ class N_Mark_Alignment_Env:
         """
         環境を1手だけ進め、その結果を返す。
 
+        Args:
+            なし
+
         Returns:
-            action (int): 実行したマス番号
-            prev_board (List[int]): 行動前の盤面状態（コピー）
-            next_board (List[int]): 行動後の盤面状態（コピー）
-            actor_team_value (int): 行動したプレイヤーのチーム値
-            next_team_value (int): 次に行動するプレイヤーのチーム値
-            done (bool): ゲーム終了フラグ（Trueなら終局）
-            result_value (int): 終局時の勝敗チーム値、または引き分けを示す値
+            Tuple[int, List[int], List[int], int, int, bool, int]:
+                action (int): 実行したマス番号
+                prev_board (List[int]): 行動前の盤面状態（コピー）
+                next_board (List[int]): 行動後の盤面状態（コピー）
+                actor_team_value (int): 行動したプレイヤーのチーム値
+                next_team_value (int): 次に行動するプレイヤーのチーム値
+                done (bool): ゲーム終了フラグ（Trueなら終局）
+                result_value (int): 終局時の勝敗チーム値、または引き分けを示す値
         """
+
         # 1) 手番管理
         current_turn = self.advance_turn()
         next_turn = self.this_turn
 
-        # 2) 行動決定
+        # 2) 行動取得（ログ用に盤面を記録）
+        prev_board = self.board.copy()
         player = self.player_turn_list[current_turn]
+        before_context = {
+            "turn_index": current_turn,
+            "player_id": player.get_agent_id(),
+            "player_icon": player.get_player_icon(),
+            "board_before": prev_board.copy(),
+        }
+        self._emit_hook(BEFORE_STEP_HOOK, before_context)
         action = player.get_action(self)
 
         # 3) 盤面更新
-        prev_board = self.board.copy()
         team_value = player.get_my_team_value()
         self.board[action] = team_value
         self.board_icon[action] = player.get_agent_id()
+        next_board = self.board.copy()
 
         # 4) 終局判定
         done, result_value = self.judge_game_finish(self.board)
@@ -292,11 +454,25 @@ class N_Mark_Alignment_Env:
         # 5) 次手番チーム値取得
         next_team_value = self.player_turn_list[next_turn].get_my_team_value()
 
-        # 6) 戻り値としてまとめて返す
+        # 6) ステップ情報を記録して返却
+        step_context = {
+            "turn_index": current_turn,
+            "player_id": player.get_agent_id(),
+            "player_icon": player.get_player_icon(),
+            "action": action,
+            "board_before": prev_board,
+            "board_after": next_board,
+            "actor_team_value": team_value,
+            "next_team_value": next_team_value,
+            "done": done,
+            "result_value": result_value,
+        }
+        self._record_step(step_context)
+
         return (
             action,
             prev_board,
-            self.board.copy(),
+            next_board,
             team_value,
             next_team_value,
             done,
@@ -354,10 +530,13 @@ class N_Mark_Alignment_Env:
         現在の盤面を、2次元リスト形式で取得する。
 
         各マスには、プレイヤーのアイコン（文字）または空きマスのインデックス（文字列化された数字）が入る。
+        Args:
+            なし
 
         Returns:
             List[List[str]]: プレイヤーアイコンまたはマス番号からなる2次元リスト。
         """
+
         rendered_board = []
         for row in range(self.BOARD_SIDE):
             row_data = []
@@ -382,10 +561,13 @@ class N_Mark_Alignment_Env:
         現在の盤面を整形された文字列として取得する。
 
         `get_rendered_board_data()` を元に、見やすい形で改行付きの文字列に整形する。
+        Args:
+            なし
 
         Returns:
             str: 見やすく整形された盤面の文字列（改行区切り）。
         """
+
         board_data = self.get_rendered_board_data()
         return "\n" + "\n".join([" | ".join(row) for row in board_data]) + "\n"
 
