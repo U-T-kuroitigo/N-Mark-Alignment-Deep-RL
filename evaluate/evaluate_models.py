@@ -11,10 +11,11 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import csv
 
 import torch
+import yaml
 
 from agent.dqn.dqn_agent import DQN_Agent
 from saver.dqn_agent_saver.model_saver import ModelSaver
@@ -58,9 +59,9 @@ class EvaluationConfig:
     outputs: List[str] = field(default_factory=lambda: ["csv"])
 
     @classmethod
-    def from_json(cls, path: Path) -> "EvaluationConfig":
+    def from_yaml(cls, path: Path) -> "EvaluationConfig":
         """
-        JSON ファイルから EvaluationConfig を生成する。
+        YAML ファイルから EvaluationConfig を生成する。
 
         Args:
             path (Path): 設定ファイルのパス。
@@ -68,8 +69,27 @@ class EvaluationConfig:
         Returns:
             EvaluationConfig: 生成された設定インスタンス。
         """
-        data = json.loads(path.read_text(encoding="utf-8"))
-        models = [ModelEntry(**entry) for entry in data["models"]]
+        if path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError("評価設定ファイルは YAML (.yaml / .yml) としてください。")
+
+        raw_text = path.read_text(encoding="utf-8")
+        loaded = yaml.safe_load(raw_text)
+        if not isinstance(loaded, dict):
+            raise ValueError("設定ファイルの形式が不正です（辞書ではありません）。")
+        data: Dict[str, Any] = loaded
+
+        models_data = data.get("models")
+        if not isinstance(models_data, list):
+            raise ValueError("設定ファイルに 'models' リストが含まれていません。")
+
+        normalized_models: List[Dict[str, str]] = []
+        for entry in models_data:
+            if not isinstance(entry, dict):
+                raise ValueError("models 配列の要素は辞書である必要があります。")
+            normalized_models.append(
+                {**entry, "path": entry["path"].replace("\\", "/")}
+            )
+        models = [ModelEntry(**entry) for entry in normalized_models]
         return cls(
             board_side=data["board_side"],
             reward_line=data["reward_line"],
@@ -212,7 +232,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         type=Path,
-        help="評価設定を記載した JSON ファイルのパス。",
+        help="評価設定を記載した YAML ファイルのパス。",
     )
     parser.add_argument(
         "--output",
@@ -309,7 +329,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.config:
-        config = EvaluationConfig.from_json(args.config)
+        config = EvaluationConfig.from_yaml(args.config)
     else:
         config = build_default_config()
 

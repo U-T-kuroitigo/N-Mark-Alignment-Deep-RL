@@ -156,26 +156,21 @@ def test_load_agent_model_uses_num_team_values(monkeypatch: pytest.MonkeyPatch) 
 
 def test_evaluation_config_accepts_windows_style_paths(tmp_path: Path) -> None:
     """Windows 形式の相対パスをそのまま貼り付けた JSON でも読み込めることを確認する。"""
-    config_text = r"""
-{
-  "board_side": 3,
-  "reward_line": 3,
-  "eval_episodes": 1,
-  "num_team_values": 2,
-  "record_boards": false,
-  "output_dir": "evaluate/result",
-  "models": [
-    {
-      "path": "agent_model\DQN-Agent_3_3_2\foo.pt",
-      "icon": "A",
-      "player_name": "ModelA"
-    }
-  ]
-}
+    config_text = """
+board_side: 3
+reward_line: 3
+eval_episodes: 1
+num_team_values: 2
+record_boards: false
+output_dir: evaluate/result
+models:
+  - path: 'agent_model\\DQN-Agent_3_3_2\\foo.pt'
+    icon: A
+    player_name: ModelA
 """
-    config_path = tmp_path / "config.json"
+    config_path = tmp_path / "config.yaml"
     config_path.write_text(config_text.strip(), encoding="utf-8")
 
-    config = EvaluationConfig.from_json(config_path)
+    config = EvaluationConfig.from_yaml(config_path)
 
     assert config.models[0].path == "agent_model/DQN-Agent_3_3_2/foo.pt"
