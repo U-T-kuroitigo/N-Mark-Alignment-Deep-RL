@@ -105,7 +105,9 @@ def resolve_device(device_type: str) -> torch.device:
         return torch.device("cpu")
     if device_type == "cuda":
         if not torch.cuda.is_available():
-            raise RuntimeError("CUDA が利用できません。DEVICE_TYPE を cpu か auto に変更してください。")
+            raise RuntimeError(
+                "CUDA が利用できません。DEVICE_TYPE を cpu か auto に変更してください。"
+            )
         return torch.device("cuda")
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -123,7 +125,9 @@ def main() -> None:
     reward_line = target_metadata.get("reward_line")
     team_count = target_metadata.get("team_count", len(PLAYER_SETTINGS))
     if board_side is None or reward_line is None:
-        raise ValueError("メタデータに board_side または reward_line が含まれていません。")
+        raise ValueError(
+            "メタデータに board_side または reward_line が含まれていません。"
+        )
     if len(PLAYER_SETTINGS) != team_count:
         raise ValueError(
             f"PLAYER_SETTINGS の人数({len(PLAYER_SETTINGS)})がモデルのチーム数({team_count})と一致しません。"

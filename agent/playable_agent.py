@@ -33,7 +33,9 @@ class PlayableAgent(model.Agent_Model):
             for row in board_data:
                 print(" | ".join(row))
             try:
-                return int(input(f"どこに置きますか？ (0〜{env.get_board_size() - 1}): "))
+                return int(
+                    input(f"どこに置きますか？ (0〜{env.get_board_size() - 1}): ")
+                )
             except ValueError:
                 return -1
 

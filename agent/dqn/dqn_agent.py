@@ -313,9 +313,9 @@ class DQN_Agent(model.Agent_Model):
             and self.last_action_context.get("selected_action") == action
         ):
             self.last_action_context["reward"] = reward
-            self.last_action_context[
-                "next_state_tensor"
-            ] = next_state_tensor.detach().cpu()
+            self.last_action_context["next_state_tensor"] = (
+                next_state_tensor.detach().cpu()
+            )
 
     def append_finish_result(self, action, state, result_value):
         """

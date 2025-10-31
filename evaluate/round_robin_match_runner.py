@@ -266,9 +266,7 @@ class RoundRobinMatchRunner:
                             else (
                                 agent_b.get_player_icon()
                                 if v == agent_b.get_my_team_value()
-                                else " "
-                                if v == self.env.EMPTY
-                                else "?"
+                                else " " if v == self.env.EMPTY else "?"
                             )
                         )
                         for v in row
