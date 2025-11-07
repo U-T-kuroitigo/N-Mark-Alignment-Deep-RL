@@ -13,33 +13,13 @@ from N_Mark_Alignment_env import N_Mark_Alignment_Env
 from agent.dqn.dqn_agent import DQN_Agent
 from saver.dqn_agent_saver.model_saver import ModelSaver
 from agent.N_Mark_Alignment_random_npc import N_Mark_Alignment_random_npc as Random_NPC
+from utils.logging_utils import LoggingConfig, build_logger
 
 # 定数定義 - ハイパーパラメータ等のデフォルト値
 DEFAULT_TOTAL_EPISODES: int = 1000  # 総エピソード数デフォルト
 DEFAULT_LEARN_ITERATIONS_PER_EPISODE: int = 1  # 学習反復回数デフォルト
 DEFAULT_SAVE_FREQUENCY: int = 10  # モデル保存頻度デフォルト
 DEFAULT_LOG_FREQUENCY: int = 10  # ログ出力頻度デフォルト
-
-
-def _build_default_logger() -> logging.Logger:
-    """
-    Trainer 用のデフォルトロガーを生成する。
-
-    Returns:
-        logging.Logger: コンソール出力と INFO レベルを持つロガー。
-    """
-    logger = logging.getLogger(__name__ + ".trainer")
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    return logger
 
 
 class Trainer:
@@ -93,7 +73,9 @@ class Trainer:
         self.log_frequency = cfg.get("log_frequency", DEFAULT_LOG_FREQUENCY)
 
         # ログ関連の初期化
-        self.logger = logger or _build_default_logger()
+        self.logger = logger or build_logger(
+            LoggingConfig(name=__name__ + ".trainer", level="INFO")
+        )
         self.episode_hooks = episode_hooks or []
 
     def train(self) -> None:

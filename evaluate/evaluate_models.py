@@ -17,6 +17,8 @@ import csv
 import torch
 import yaml
 
+from utils.logging_utils import LoggingConfig, build_logger
+
 from agent.dqn.dqn_agent import DQN_Agent
 from saver.dqn_agent_saver.model_saver import ModelSaver
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model
@@ -250,6 +252,16 @@ def create_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="設定ファイルより盤面ログ出力を無効化したい場合に指定。",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="評価用ロガーのログレベル（INFO/DEBUG など）。",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="ログをファイルへ保存する場合のパス。",
+    )
     return parser
 
 
@@ -303,27 +315,6 @@ def write_outputs(
         logger.info("評価結果を JSON として保存しました: %s", json_path)
 
 
-def build_logger() -> logging.Logger:
-    """
-    評価スクリプト用ロガーを生成する。
-
-    Returns:
-        logging.Logger: INFO レベルのロガー。
-    """
-    logger = logging.getLogger(__name__ + ".evaluate")
-    if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    return logger
-
-
 def main() -> None:
     parser = create_argument_parser()
     args = parser.parse_args()
@@ -340,7 +331,13 @@ def main() -> None:
     if args.no_record_boards:
         record_boards = False
 
-    logger = build_logger()
+    logger = build_logger(
+        LoggingConfig(
+            name=__name__ + ".evaluate",
+            level=args.log_level,
+            log_file=args.log_file,
+        )
+    )
 
     model_list: List[Agent_Model] = []
     for idx, entry in enumerate(config.models):

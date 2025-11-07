@@ -1,56 +1,79 @@
 """
 train_dqn.py
 
-五目並べDQNエージェントの学習・テストループを実行するスクリプト。
-Trainerクラスを利用して学習部分を一元化する。
+五目並べ DQN エージェントの学習・テストループを実行するスクリプト。
+YAML 設定を読み込んで Trainer を初期化し、学習後にランダム NPC との
+テスト対戦を行う。
 """
 
-# 定数定義
-BOARD_SIDE: int = 3  # 盤面サイズ（3×3）
-REWARD_LINE: int = 3  # N目並べのN
-LEARNING_COUNT: int = 100  # 学習エピソード数
-TEST_COUNT: int = 100  # 最終テスト数
-PRINT_TEST_RATE: int = max(1, TEST_COUNT // 5)  # テスト中表示頻度
-EVAL_EPISODES: int = 100  # 評価時のテストゲーム数
-SAVE_FREQUENCY: int = LEARNING_COUNT // 20  # モデル保存頻度
-LOG_FREQUENCY: int = LEARNING_COUNT // 20  # ログ出力頻度
+from __future__ import annotations
 
-# Trainer設定
-TRAINER_CONFIG = {
-    "total_episodes": LEARNING_COUNT,
-    "learn_iterations_per_episode": 1,
-    "save_frequency": SAVE_FREQUENCY,
-    "log_frequency": LOG_FREQUENCY,
-}
+import argparse
+from pathlib import Path
 
-# モジュールインポート
 import torch
-from agent.network.q_network import QNetwork  # Qネットワーク定義
-from agent.network.q_network import set_network  # ネットワーク初期化関数
-from N_Mark_Alignment_env import N_Mark_Alignment_Env  # 環境クラス
-from agent.dqn.dqn_agent import DQN_Agent  # DQNエージェント
-from saver.dqn_agent_saver.model_saver import ModelSaver  # モデル保存クラス
-from train.trainer import Trainer  # 学習ループ管理クラス
+
+from N_Mark_Alignment_env import N_Mark_Alignment_Env
 from agent.N_Mark_Alignment_random_npc import (
     N_Mark_Alignment_random_npc as Random_NPC,
-)  # ランダムNPC
+)
+from agent.dqn.dqn_agent import DQN_Agent
+from agent.network.q_network import set_network
+from saver.dqn_agent_saver.model_saver import ModelSaver
+from train.trainer import Trainer
+from train.training_config import TrainingConfig
+from utils.logging_utils import LoggingConfig, build_logger
+
+
+def parse_args() -> argparse.Namespace:
+    """
+    train_dqn スクリプト用の CLI 引数を定義する。
+
+    Returns:
+        argparse.Namespace: 解析済み引数。
+    """
+    parser = argparse.ArgumentParser(
+        description="DQN エージェントを学習し、ランダム NPC とテストする。"
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="トレーニング設定を記載した YAML ファイルのパス。",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="ログをファイルへ保存する場合のパス。",
+    )
+    return parser.parse_args()
 
 
 def main() -> None:
     """
-    DQNエージェントを学習およびテストする。
-    Trainerを用いて学習フェーズを実行後、テストフェーズではランダムNPCと対戦する。
+    YAML 設定を読み込み、Trainer を用いた学習とテスト評価を実行する。
     """
-    # デバイス設定
+    args = parse_args()
+    if args.config:
+        training_config = TrainingConfig.from_yaml(args.config)
+    else:
+        training_config = TrainingConfig()
+
+    logger = build_logger(
+        LoggingConfig(
+            name=__name__ + ".train_dqn",
+            level=training_config.log_level,
+            log_file=args.log_file,
+        )
+    )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    num_team_values = training_config.num_team_values
 
-    num_team_values = 2  # チーム値の数（例：2チーム）
+    policy_net, target_net = set_network(
+        training_config.board_side, num_team_values, device
+    )
 
-    # ネットワーク定義と初期化
-    policy_net, target_net = set_network(BOARD_SIDE, num_team_values, device)
-
-    # エージェントA, Bの生成（学習モード）
-    agent_A = DQN_Agent(
+    agent_a = DQN_Agent(
         player_icon="A",
         player_value=0,
         learning=True,
@@ -58,8 +81,7 @@ def main() -> None:
         target_net=target_net,
         device=device,
     )
-    # agent_A = Random_NPC(player_icon="A", player_value=0)  # エージェントAのランダムNPC
-    agent_B = DQN_Agent(
+    agent_b = DQN_Agent(
         player_icon="B",
         player_value=1,
         learning=True,
@@ -67,54 +89,47 @@ def main() -> None:
         target_net=target_net,
         device=device,
     )
-    # agent_B = Random_NPC(player_icon="B", player_value=1)  # エージェントBのランダムNPC
-    player_list = [agent_A, agent_B]
+    player_list = [agent_a, agent_b]
     if len(player_list) != num_team_values:
         raise ValueError(
-            f"プレイヤー数({len(player_list)})とチーム値の数({num_team_values})が一致しません。"
+            f"プレイヤー数({len(player_list)})とチーム数({num_team_values})が一致していません。"
         )
 
-    # 環境初期化
     env = N_Mark_Alignment_Env(
-        board_side=BOARD_SIDE,
-        reward_line=REWARD_LINE,
+        board_side=training_config.board_side,
+        reward_line=training_config.reward_line,
         player_list=player_list,
     )
     env.reset_game_rate()
 
-    # モデルセーバー初期化
-    saver = ModelSaver()
-
-    # Trainer初期化および学習実行
     trainer = Trainer(
         env=env,
-        agent=agent_A,
-        model_saver=saver,
-        config=TRAINER_CONFIG,
-        # eval_interval=LEARNING_COUNT // 5,
-        eval_episodes=EVAL_EPISODES,
+        agent=agent_a,
+        model_saver=ModelSaver(),
+        config=training_config.to_trainer_dict(),
+        eval_episodes=training_config.eval_episodes,
+        logger=logger,
     )
     trainer.train()
 
-    # テストフェーズ準備：新たにランダムNPCと対戦する環境を構築
-    agent_A.set_learning(False)
+    agent_a.set_learning(False)
     random_npc = Random_NPC(player_icon="B", player_value=1)
-    player_list = [agent_A, random_npc]
-    env.set_player(player_list=player_list)
-    agent_A.reset_rate()
+    env.set_player(player_list=[agent_a, random_npc])
+    agent_a.reset_rate()
     env.reset_game_rate()
 
-    # テストフェーズ: auto_play() を使って1エピソードずつ実行
-    for i in range(1, TEST_COUNT + 1):
-        _, board_icon = env.auto_play()
-        if i % PRINT_TEST_RATE == 0 or i == TEST_COUNT:
-            env.print_board(board_icon)
-            w, l, d = agent_A.get_rate()
-            print(f"テスト{i}回目 → win:{w:.3f}%, lose:{l:.3f}%, draw:{d:.3f}%")
+    test_count = training_config.eval_episodes
+    print_interval = max(1, test_count // 5)
 
-    # 最終結果表示
-    w, l, d = agent_A.get_rate()
-    print(f"最終テスト → 勝率{w:.3f}%  負率{l:.3f}%  引き分け率{d:.3f}%")
+    for i in range(1, test_count + 1):
+        _, board_icon = env.auto_play()
+        if i % print_interval == 0 or i == test_count:
+            env.print_board(board_icon)
+            win, lose, draw = agent_a.get_rate()
+            print(f"テスト{i}回目 → win:{win:.3f}%, lose:{lose:.3f}%, draw:{draw:.3f}%")
+
+    win, lose, draw = agent_a.get_rate()
+    print(f"最終テスト → 勝率{win:.3f}%  負率{lose:.3f}%  引き分け率{draw:.3f}%")
 
 
 if __name__ == "__main__":

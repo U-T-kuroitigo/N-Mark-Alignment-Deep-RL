@@ -1,0 +1,31 @@
+base_model_path: 'agent_model\...\*.pt'      # 追加学習のベースとなるモデルへのパス
+player_settings:                             # 対戦させるプレイヤーの一覧（順番=チームID）
+  - type: base                               # "base" はベースモデル自身。最初の要素は必ず base
+    icon: A                                  # 盤面表示用のアイコン
+    learning: true                           # 学習モードにするか
+    load_replay: false                       # リプレイバッファを読み込むか
+  - type: npc                                # "npc" はランダムNPC。path 指定は不要
+    icon: B
+    learning: false
+#  - type: model                             # 別モデルと対戦させる場合の例
+#    path: agent_model/.../opponent.pt
+#    icon: C
+#    learning: false
+#  - type: self                              # ベースモデルを別インスタンスとして使用
+#    icon: D
+#    learning: false
+#    path: ''                                # 省略時は base_model_path を利用
+learning_count: 100                          # 追加学習で回すエピソード数
+learn_iterations_per_episode: 1              # エピソードごとの重み更新の回数
+save_frequency: null                         # null で自動計算（エピソード数の 1/20）
+log_frequency: null                          # null で自動計算
+eval_episodes: 100                           # 評価時にランダムNPCと対戦する回数
+device_type: auto                            # "auto" / "cpu" / "cuda"
+reset_epsilon: true                          # 学習前に ε をリセットするか
+log_level: INFO                              # ログレベル (INFO/DEBUG など)
+
+- "base": 追加学習対象のモデル。`path` を省略すると `base_model_path` を使用する。
+- "model": 他モデルを対戦相手にする場合。`path` で opponent の .pt を指定する。
+- "self": ベースモデルを別インスタンスとして使用。`path` 省略で base と同じ。
+- "npc": ランダム NPC。`path` 指定は不要。
+- `python -m train.train_dqn_finetune --config configs/training/sample_finetune.yaml` で使用する。
