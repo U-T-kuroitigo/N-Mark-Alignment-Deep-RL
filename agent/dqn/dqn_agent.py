@@ -16,7 +16,7 @@ import numpy as np
 
 import agent.model.N_Mark_Alignment_agent_model as model
 from agent.buffer.replay_buffer import ReplayBuffer
-from agent.utils.state_utils import make_tensor, make_state_tensor
+from agent.utils.state_utils import build_state_from_env, make_tensor
 from agent.utils.reward_utils import (
     is_win,
     is_draw,
@@ -212,27 +212,31 @@ class DQN_Agent(model.Agent_Model):
             int: 選択された行動（マスのインデックス）
         """
 
-        # 盤面テンソルを生成し、ニューラルネット入力および説明用ログとして保持しておく。
-        state_tensor = make_state_tensor(env, self.board_side, self.device)
-        state_batch = state_tensor.unsqueeze(0)
-        team_value_tensor = torch.tensor(
-            [self.my_team_value], dtype=torch.long, device=self.device
+        # 盤面テンソルと手番情報、有効手マスクをまとめて生成し、推論・ログの双方で再利用する。
+        state_info = build_state_from_env(
+            env,
+            self.board_side,
+            self.device,
+            empty_value=self.empty_value,
+            team_value=self.my_team_value,
         )
+        state_tensor = state_info.board_tensor
+        state_batch = state_tensor.unsqueeze(0)
+        team_value_tensor = state_info.team_tensor
+        if team_value_tensor is None:
+            team_value_tensor = torch.tensor(
+                [self.my_team_value], dtype=torch.long, device=self.device
+            )
 
-        board = list(env.get_board())
-        valid_actions = [
-            idx for idx, value in enumerate(board) if value == self.empty_value
-        ]
+        valid_actions = state_info.valid_actions
 
         with torch.no_grad():  # Q 値推論
             raw_q_values = self.policy_net(state_batch, team_value_tensor).squeeze(0)
 
-        masked_q_values = raw_q_values.clone()
-        invalid_indices = [
-            i for i in range(len(masked_q_values)) if i not in valid_actions
-        ]
-        if invalid_indices:
-            masked_q_values[invalid_indices] = -float("inf")
+        valid_action_mask = state_info.valid_action_mask.reshape_as(raw_q_values)
+        masked_q_values = raw_q_values.masked_fill(
+            ~valid_action_mask.bool(), -float("inf")
+        )
 
         epsilon_sample = random.random() if self.learning else 1.0
         greedy_action = int(torch.argmax(masked_q_values).item())
@@ -252,6 +256,7 @@ class DQN_Agent(model.Agent_Model):
             "raw_q_values": raw_q_values.detach().cpu(),
             "masked_q_values": masked_q_values.detach().cpu(),
             "valid_actions": valid_actions,
+            "valid_action_mask": valid_action_mask.detach().cpu(),
             "selected_action": action,
             "greedy_action": greedy_action,
             "selection_mode": selection_mode,
