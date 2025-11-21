@@ -1,0 +1,16 @@
+base_model_path: agent_model\DQN-Agent_3_3_2\DQN-Agent_3_3_2_5_202510281635\DQN-Agent_3_3_2_5_202510281635.pt
+player_settings:
+  - type: base
+    icon: A
+    learning: true
+    load_replay: false
+  - type: npc
+    icon: B
+learning_count: 100
+learn_iterations_per_episode: 1
+save_frequency: null
+log_frequency: null
+eval_episodes: 100
+device_type: auto
+reset_epsilon: true
+log_level: INFO

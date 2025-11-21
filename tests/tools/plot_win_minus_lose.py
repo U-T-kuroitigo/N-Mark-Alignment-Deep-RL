@@ -21,7 +21,9 @@ def main() -> None:
 
     plt.rcParams["font.family"] = "MS Gothic"
 
-    title_str = f"{board_side}×{board_side}盤 {reward_line}列揃え ({player_count}人対戦)"
+    title_str = (
+        f"{board_side}×{board_side}盤 {reward_line}列揃え ({player_count}人対戦)"
+    )
 
     plt.figure(figsize=(8, 5))
     plt.plot(

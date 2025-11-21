@@ -1,0 +1,9 @@
+board_side: 3
+reward_line: 3
+num_team_values: 2
+total_episodes: 100
+learn_iterations_per_episode: 1
+save_frequency: 5
+log_frequency: 5
+eval_episodes: 50
+log_level: INFO

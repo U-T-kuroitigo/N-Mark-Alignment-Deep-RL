@@ -1,0 +1,13 @@
+board_side: 3                      # 盤面の一辺サイズ。例: 3 → 3x3 の盤
+reward_line: 3                     # 勝利に必要な連続数。3 なら三目並べ
+num_team_values: 2                 # チーム数（2 で 1 vs 1）
+total_episodes: 100                # 学習で実行するエピソード数
+learn_iterations_per_episode: 1    # 各エピソード後に実行する学習ステップ数
+save_frequency: 5                  # モデル保存間隔（エピソード数）
+log_frequency: 5                   # ログ出力間隔（エピソード数）
+eval_episodes: 50                  # 評価時に対戦するゲーム数
+log_level: INFO                    # ログレベル（例: DEBUG / INFO）
+
+- `python -m train.train_dqn --config configs/training/sample_train.yaml` のように渡す。
+- 設定ファイルを省略した場合は TrainingConfig のデフォルト値で実行される。
+- save_frequency / log_frequency は `null` を指定すると自動計算（エピソード数の 1/20）になる。

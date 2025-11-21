@@ -1,0 +1,16 @@
+board_side: 3                      # 盤面の一辺サイズ。例: 3 → 3x3 の盤
+reward_line: 3                     # 勝利に必要な連続数。3なら三目並べ
+eval_episodes: 50                  # 各対戦カードで実施する試合数
+num_team_values: 2                 # チーム数（2で1vs1）。PTの埋め込み数に合わせて補正される（現状 evaluate_models は 1 対 1 のみ対応）
+record_boards: true                # true にすると各試合の盤面ログを match/ 以下に保存
+output_dir: evaluate/result        # 結果を保存するルートディレクトリ
+outputs:                           # 出力フォーマット。csv/json などを指定
+  - csv
+  - json
+models:                            # 評価対象モデルのリスト。順番は評価順に影響
+  - path: 'agent_model/.../foo.pt' # モデルファイルへのパス（Windows でコピーしたパスをそのまま貼り付けられる）
+    icon: A                        # 対戦時に表示するアイコン
+    player_name: ModelA            # ログや評価結果に表示される名前
+  - path: 'agent_model/.../bar.pt'
+    icon: B
+    player_name: ModelB

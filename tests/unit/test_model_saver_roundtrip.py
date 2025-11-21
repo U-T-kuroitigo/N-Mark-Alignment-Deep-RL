@@ -66,17 +66,18 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
     save_dir = tmp_path / "models"
     saver = ModelSaver(save_dir=str(save_dir))
 
-    model_path = saver.save(agent)
+    artifacts = saver.save(agent)
 
     # 保存物の存在を確認
-    model_path = Path(model_path)
+    model_path = Path(artifacts.model_path)
     assert model_path.exists()
-    meta_path = model_path.parent / "meta" / f"{model_path.stem}.json"
-    replay_path = model_path.parent / "replay" / f"{model_path.stem}.pkl"
-    history_path = model_path.parent.parent / "evaluation_history.csv"
+    meta_path = Path(artifacts.metadata_path)
+    replay_path = Path(artifacts.replay_buffer_path)
+    history_path = Path(artifacts.eval_history_path)
     assert meta_path.exists()
     assert replay_path.exists()
     assert history_path.exists()
+    assert artifacts.version_paths.version_dir == str(model_path.parent)
 
     # 新しいエージェントに読み込み
     loaded_agent = _create_fresh_agent()

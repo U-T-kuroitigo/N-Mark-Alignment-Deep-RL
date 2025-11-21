@@ -209,7 +209,7 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
     agent.learning_count = 5
 
     saver = ModelSaver(save_dir=str(tmp_path / "models"))
-    model_path = saver.save(agent)
+    artifacts = saver.save(agent)
 
     policy_net_2, target_net_2 = set_network(
         board_side=3, num_team_values=2, device=device
@@ -219,7 +219,7 @@ def test_model_saver_roundtrip(tmp_path: Path) -> None:
     loaded_agent.reward_line = 3
     loaded_agent.team_value_list = [0, 1]
 
-    saver.load(model_path, loaded_agent)
+    saver.load(artifacts.model_path, loaded_agent)
 
     assert loaded_agent.board_side == 3
     assert all(

@@ -4,7 +4,74 @@
 DQNや他の強化学習モデルから共通して呼び出すことを想定。
 """
 
-from typing import List, Set
+from functools import lru_cache
+from typing import List, Set, Tuple
+
+
+EMPTY_VALUE: int = -1
+"""盤面上の空きマスを表す値（環境全体で固定の -1 ）。"""
+
+_DIRECTION_VECTORS: Tuple[Tuple[int, int], ...] = (
+    (0, 1),  # 右方向（横）
+    (1, 0),  # 下方向（縦）
+    (1, 1),  # 右下方向（↘）
+    (1, -1),  # 左下方向（↙）
+)
+"""リーチ判定に用いる方向ベクトルの一覧。"""
+
+
+@lru_cache(maxsize=None)
+def _generate_all_lines(
+    board_side: int, reward_line: int
+) -> Tuple[Tuple[int, ...], ...]:
+    """
+    盤面サイズと勝利条件に基づき、評価対象となる直線（インデックス列）を生成する。
+
+    Args:
+        board_side (int): 盤面の一辺サイズ。
+        reward_line (int): 勝利に必要な連続数。
+
+    Returns:
+        Tuple[Tuple[int, ...], ...]: 各ラインを構成する一次元インデックスのタプル一覧。
+    """
+    if board_side <= 0 or reward_line <= 0:
+        return tuple()
+
+    lines: List[Tuple[int, ...]] = []
+    board_limit = board_side - 1
+
+    for row in range(board_side):
+        for col in range(board_side):
+            for delta_row, delta_col in _DIRECTION_VECTORS:
+                # 勝利条件分だけ進んだ先が盤面内かを事前に確認
+                last_row = row + delta_row * (reward_line - 1)
+                last_col = col + delta_col * (reward_line - 1)
+                if not (0 <= last_row <= board_limit and 0 <= last_col <= board_limit):
+                    continue
+
+                indices: List[int] = []
+                for step in range(reward_line):
+                    current_row = row + delta_row * step
+                    current_col = col + delta_col * step
+                    # ステップごとに座標を進め、一次元インデックスへ変換
+                    indices.append(current_row * board_side + current_col)
+                lines.append(tuple(indices))
+
+    return tuple(lines)
+
+
+def _extract_line_values(state: List[int], indices: Tuple[int, ...]) -> List[int]:
+    """
+    指定されたインデックス列から盤面の値をまとめて取得する。
+
+    Args:
+        state (List[int]): 盤面状態（一次元リスト）。
+        indices (Tuple[int, ...]): 取得対象となるインデックス列。
+
+    Returns:
+        List[int]: 対象インデックスに対応する盤面の値を並べたリスト。
+    """
+    return [state[idx] for idx in indices]
 
 
 def is_win(result_value: int, my_team_value: int) -> bool:
@@ -75,35 +142,16 @@ def find_two_step_reach_positions(
         Set[int]: 二手リーチに該当する空きマスのインデックス集合
     """
     reach_positions: Set[int] = set()
-    directions = [1, board_side, board_side + 1, board_side - 1]  # 横・縦・↘・↙
 
-    def is_valid_index(idx: int) -> bool:
-        return 0 <= idx < board_side * board_side
-
-    for start in range(board_side * board_side):
-        for d in directions:
-            indices = [start + i * d for i in range(reward_line)]
-            if not all(is_valid_index(idx) for idx in indices):
-                continue
-
-            base_row = start // board_side
-            rows = [idx // board_side for idx in indices]
-
-            # 横方向（→）
-            if d == 1 and any(r != base_row for r in rows):
-                continue
-
-            # 縦・斜め方向共通チェック
-            if d in (board_side, board_side + 1, board_side - 1) and rows != [
-                base_row + i for i in range(reward_line)
-            ]:
-                continue
-
-            values = [state[idx] for idx in indices]
-            if values.count(team_value) == reward_line - 2 and values.count(-1) == 2:
-                for i, v in zip(indices, values):
-                    if v == -1:
-                        reach_positions.add(i)
+    for line in _generate_all_lines(board_side, reward_line):
+        values = _extract_line_values(state, line)
+        if (
+            values.count(team_value) == reward_line - 2
+            and values.count(EMPTY_VALUE) == 2
+        ):
+            for idx, value in zip(line, values):
+                if value == EMPTY_VALUE:
+                    reach_positions.add(idx)
 
     return reach_positions
 
@@ -156,33 +204,15 @@ def find_direct_reach_positions(
         Set[int]: リーチに該当する空きマスのインデックス集合
     """
     reach_positions: Set[int] = set()
-    directions = [1, board_side, board_side + 1, board_side - 1]  # 横・縦・↘・↙
 
-    def is_valid_index(idx: int) -> bool:
-        return 0 <= idx < board_side * board_side
-
-    for start in range(board_side * board_side):
-        for d in directions:
-            indices = [start + i * d for i in range(reward_line)]
-            if not all(is_valid_index(idx) for idx in indices):
-                continue
-
-            base_row = start // board_side
-            rows = [idx // board_side for idx in indices]
-
-            # 横方向（→）
-            if d == 1 and any(r != base_row for r in rows):
-                continue
-            # 縦・斜め方向共通チェック（すべて下方向に一段ずつ下がる）
-            if d in (board_side, board_side + 1, board_side - 1) and rows != [
-                base_row + i for i in range(reward_line)
-            ]:
-                continue
-
-            # 値チェック：N-1個が判定対象のチーム値、1個が空き
-            values = [state[idx] for idx in indices]
-            if values.count(team_value) == reward_line - 1 and values.count(-1) == 1:
-                reach_positions.add(indices[values.index(-1)])
+    for line in _generate_all_lines(board_side, reward_line):
+        values = _extract_line_values(state, line)
+        if (
+            values.count(team_value) == reward_line - 1
+            and values.count(EMPTY_VALUE) == 1
+        ):
+            empty_index = values.index(EMPTY_VALUE)
+            reach_positions.add(line[empty_index])
 
     return reach_positions
 
@@ -209,7 +239,7 @@ def is_reach_blocked(
     Returns:
         bool: 阻止成功なら True
     """
-    opponent_teams = set(state_before) - {team_value, -1}
+    opponent_teams = set(state_before) - {team_value, EMPTY_VALUE}
     all_reach_positions: Set[int] = set()
 
     for opp in opponent_teams:

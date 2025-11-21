@@ -4,14 +4,16 @@ trainer.py
 DQNエージェントをN目並べ環境で訓練する学習ループを管理するクラス
 """
 
+import logging
 import time
-from typing import Dict, Optional
+from typing import Callable, Dict, List, Optional
 
 # 環境、エージェント、モデル保存用クラスを型指定
 from N_Mark_Alignment_env import N_Mark_Alignment_Env
 from agent.dqn.dqn_agent import DQN_Agent
 from saver.dqn_agent_saver.model_saver import ModelSaver
 from agent.N_Mark_Alignment_random_npc import N_Mark_Alignment_random_npc as Random_NPC
+from utils.logging_utils import LoggingConfig, build_logger
 
 # 定数定義 - ハイパーパラメータ等のデフォルト値
 DEFAULT_TOTAL_EPISODES: int = 1000  # 総エピソード数デフォルト
@@ -33,6 +35,8 @@ class Trainer:
         config: Optional[Dict[str, int]] = None,
         eval_interval: int = 100,
         eval_episodes: int = 20,
+        logger: Optional[logging.Logger] = None,
+        episode_hooks: Optional[List[Callable[[Dict[str, int]], None]]] = None,
     ) -> None:
         """
         Trainerの初期化。
@@ -48,6 +52,8 @@ class Trainer:
                 log_frequency: ログ出力頻度。
             eval_interval (int): ランダムNPC評価を行うエピソード間隔。
             eval_episodes (int): 評価時に実施するテストゲーム数。
+            logger (Optional[logging.Logger]): 進捗ログを出力するロガー。
+            episode_hooks (Optional[List[Callable[[Dict[str, int]], None]]]): エピソード完了時に呼び出されるフック。
         """
         cfg: Dict[str, int] = config or {}
 
@@ -66,6 +72,12 @@ class Trainer:
         self.save_frequency = cfg.get("save_frequency", DEFAULT_SAVE_FREQUENCY)
         self.log_frequency = cfg.get("log_frequency", DEFAULT_LOG_FREQUENCY)
 
+        # ログ関連の初期化
+        self.logger = logger or build_logger(
+            LoggingConfig(name=__name__ + ".trainer", level="INFO")
+        )
+        self.episode_hooks = episode_hooks or []
+
     def train(self) -> None:
         """
         全エピソードにわたる学習ループを実行。
@@ -79,8 +91,18 @@ class Trainer:
             if episode % self.log_frequency == 0:
                 hours, rem = divmod(elapsed, 3600)
                 minutes, seconds = divmod(rem, 60)
-                print(
-                    f"[Episode {episode}/{self.total_episodes}] 経過時間: {int(hours)}時間{int(minutes)}分{int(seconds)}秒"
+                message = {
+                    "episode": episode,
+                    "total_episodes": self.total_episodes,
+                    "elapsed_seconds": int(elapsed),
+                    "elapsed_h": int(hours),
+                    "elapsed_m": int(minutes),
+                    "elapsed_s": int(seconds),
+                }
+                self.logger.info(
+                    "[Episode %(episode)d/%(total_episodes)d] 経過時間: "
+                    "%(elapsed_h)d時間%(elapsed_m)d分%(elapsed_s)d秒",
+                    message,
                 )
 
             # モデル保存
@@ -89,10 +111,21 @@ class Trainer:
                 # 評価モード：学習OFF
                 self.agent.set_learning(False)
                 win, lose, draw = self.evaluate_random_opponent(self.eval_episodes)
-                # 評価結果をコンソール出力
-                print(
-                    f"┗ ランダムNPC評価: 勝率 {win:.1f}%, " f"負率 {lose:.1f}%, 引き分け率 {draw:.1f}%"
+                # 評価結果をロギング
+                eval_context = {
+                    "episode": episode,
+                    "evaluation_games": self.eval_episodes,
+                    "win_rate": win,
+                    "lose_rate": lose,
+                    "draw_rate": draw,
+                }
+                self.logger.info(
+                    "ランダムNPC評価: 勝率 %(win_rate).1f%%, "
+                    "負率 %(lose_rate).1f%%, 引き分け率 %(draw_rate).1f%%",
+                    eval_context,
                 )
+                for hook in self.episode_hooks:
+                    hook(eval_context)
                 # 学習再開
                 self.agent.set_learning(True)
 

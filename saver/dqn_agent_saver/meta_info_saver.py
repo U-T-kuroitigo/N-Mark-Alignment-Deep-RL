@@ -1,9 +1,9 @@
-import os
 import json
-from typing import Dict, Any
-from agent.utils.model_version_utils import make_version_dir_and_filename
+import os
+from typing import Any, Dict, Optional
+
 from agent.dqn.dqn_agent import DQN_Agent
-from datetime import datetime
+from agent.utils.model_version_utils import ModelVersionPaths
 
 
 class MetaInfoSaver:
@@ -15,8 +15,8 @@ class MetaInfoSaver:
     def save(
         self,
         agent: DQN_Agent,
-        root_dir: str = "agent_model",
-        timestamp: datetime = None,
+        version_paths: ModelVersionPaths,
+        extra_metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         DQN_Agent インスタンスからメタ情報を取得し、
@@ -25,21 +25,22 @@ class MetaInfoSaver:
 
         Args:
             agent (DQN_Agent): 保存対象のエージェントインスタンス
-            root_dir (str): モデルを保存するルートディレクトリ
+            version_paths (ModelVersionPaths): 保存先バージョンディレクトリ情報
+            extra_metadata (Optional[Dict[str, Any]]): 追記したい任意メタ情報
 
         Returns:
             str: 保存されたメタ情報ファイルのパス
         """
         # エージェントからメタ情報を取得
-        metadata: Dict[str, Any] = agent.get_metadata()
+        metadata: Dict[str, Any] = agent.get_metadata().copy()
+        if extra_metadata:
+            metadata.update(extra_metadata)
+
         # バージョンディレクトリとベースファイル名を生成
-        _, version_dir, base_filename = make_version_dir_and_filename(
-            metadata, root_dir, timestamp
-        )
-        # meta サブディレクトリ
-        meta_dir = os.path.join(version_dir, "meta")
+        meta_dir = os.path.join(version_paths.version_dir, "meta")
         os.makedirs(meta_dir, exist_ok=True)
-        path = os.path.join(meta_dir, f"{base_filename}.json")
+        # meta サブディレクトリ
+        path = os.path.join(meta_dir, f"{version_paths.base_filename}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         return path
