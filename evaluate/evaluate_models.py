@@ -14,19 +14,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import csv
 
-import torch
 import yaml
 
 from utils.logging_utils import LoggingConfig, build_logger
 
-from agent.dqn.dqn_agent import DQN_Agent
-from saver.dqn_agent_saver.model_saver import ModelSaver
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model
 from N_Mark_Alignment_env import N_Mark_Alignment_Env
 from evaluate.round_robin_match_runner import RoundRobinMatchRunner
-from agent.network.q_network import QNetwork
-from agent.network.q_network import set_network  # ネットワーク初期化関数
-from agent.playable_agent import PlayableAgent
+from evaluate.agent_factory import AgentFactory
 
 # ========= 定数定義 ========= #
 DEFAULT_BOARD_SIDE: int = 3  # 盤面サイズ
@@ -140,87 +135,6 @@ def build_default_config() -> EvaluationConfig:
         num_team_values=2,
         models=models,
     )
-
-
-def _load_metadata_from_model_path(model_path: Path) -> Dict[str, Any]:
-    """
-    モデルファイルと同じディレクトリに保存されたメタ情報を読み込む。
-
-    Args:
-        model_path (Path): モデルファイル (.pt) のパス。
-
-    Returns:
-        Dict[str, Any]: メタデータ。存在しない場合は空 dict。
-    """
-    meta_path = model_path.parent / "meta" / f"{model_path.stem}.json"
-    if meta_path.exists():
-        try:
-            return json.loads(meta_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
-    return {}
-
-
-def load_agent_model(
-    filepath: str, board_side: int, reward_line: int, num_team_values: int
-) -> DQN_Agent:
-    """
-    モデルファイルから DQN エージェントを復元する。
-
-    Args:
-        filepath (str): モデルファイルのパス。
-        board_side (int): 盤面サイズ。
-        reward_line (int): 勝利条件。
-        num_team_values (int): 登場チーム数。
-
-    Returns:
-        DQN_Agent: 復元されたエージェント。
-    """
-    filepath_path = Path(filepath)
-    metadata = _load_metadata_from_model_path(filepath_path)
-    board_side = metadata.get("board_side", board_side)
-    reward_line = metadata.get("reward_line", reward_line)
-    if "team_value_list" in metadata and isinstance(metadata["team_value_list"], list):
-        num_team_values = len(metadata["team_value_list"])
-    elif "team_list" in metadata and isinstance(metadata["team_list"], list):
-        num_team_values = len(metadata["team_list"])
-    elif "team_count" in metadata:
-        num_team_values = int(metadata["team_count"])
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    try:
-        state_dict = torch.load(filepath, map_location="cpu")
-    except Exception:  # pragma: no cover - 読み込み失敗時は設定値を使用
-        state_dict = None
-    else:
-        embedding = state_dict.get("team_embedding.weight")
-        if embedding is not None:
-            inferred = max(embedding.shape[0] - 1, 1)
-            num_team_values = inferred
-
-    policy_net, target_net = set_network(board_side, num_team_values, device)
-
-    dummy_agent = DQN_Agent(
-        player_icon="?",
-        player_value=0,
-        learning=False,
-        policy_net=policy_net,
-        target_net=target_net,
-        device=device,
-    )
-
-    dummy_agent.reward_line = reward_line
-    dummy_agent.board_side = board_side
-    if "team_value_list" in metadata and isinstance(metadata["team_value_list"], list):
-        dummy_agent.team_value_list = metadata["team_value_list"]
-    elif "team_list" in metadata and isinstance(metadata["team_list"], list):
-        dummy_agent.team_value_list = metadata["team_list"]
-    else:
-        dummy_agent.team_value_list = list(range(num_team_values))
-
-    agent = ModelSaver().load(filepath, dummy_agent, load_replay=False)
-    agent.set_learning(False)
-    return agent
 
 
 def create_argument_parser() -> argparse.ArgumentParser:
@@ -340,12 +254,16 @@ def main() -> None:
     )
 
     model_list: List[Agent_Model] = []
+    factory = AgentFactory()
     for idx, entry in enumerate(config.models):
-        agent = load_agent_model(
-            entry.path, config.board_side, config.reward_line, config.num_team_values
+        agent = factory.build(
+            model_path=Path(entry.path),
+            board_side=config.board_side,
+            reward_line=config.reward_line,
+            num_team_values=config.num_team_values,
+            player_icon=entry.icon,
+            player_value=idx,
         )
-        agent.set_player_icon(entry.icon)
-        agent.set_player_value(idx)
         agent.player_name = entry.player_name
         model_list.append(agent)
 

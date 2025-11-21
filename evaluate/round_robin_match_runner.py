@@ -5,33 +5,40 @@ import csv
 
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model
 from N_Mark_Alignment_env import N_Mark_Alignment_Env
+from utils.hook_payloads import MatchResultPayload
 
 
 class RoundRobinMatchRunner:
     def __init__(
         self,
-        env: N_Mark_Alignment_Env,
+        env: Optional[N_Mark_Alignment_Env] = None,
         eval_episodes: int = 50,
         logger: Optional[logging.Logger] = None,
         result_dir: Optional[Path] = None,
         record_boards: bool = True,
         write_summary: bool = True,
         result_hooks: Optional[List[Callable[[Dict[str, Any]], None]]] = None,
+        env_factory: Optional[Callable[[], N_Mark_Alignment_Env]] = None,
     ):
         """
         総当たり戦形式でエージェント同士を評価するためのランナー。
         環境は1つを使いまわし、各試合でset_player()によりプレイヤーを差し替える。
+        env_factory を渡した場合は各評価で新しい環境を生成でき、XAI フック付き環境に差し替えやすくなる。
 
         Args:
-            env (N_Mark_Alignment_Env): 対戦に使用する環境（1インスタンスを使い回す）
+            env (Optional[N_Mark_Alignment_Env]): 対戦に使用する環境（1インスタンスを使い回す）
             eval_episodes (int): 各対戦カードごとの試合回数
             logger (Optional[logging.Logger]): 進行状況を出力するロガー。
             result_dir (Optional[Path]): 評価結果を保存するディレクトリ（未指定時は既定パス）。
             record_boards (bool): 各試合の盤面ログを保存するかどうか。
             write_summary (bool): 集計結果を CSV に書き出すかどうか。
             result_hooks (Optional[List[Callable[[Dict[str, Any]], None]]]): 各試合結果を受け取るフック。
+            env_factory (Optional[Callable[[], N_Mark_Alignment_Env]]): 環境生成用ファクトリ。指定時は各評価前に新規生成する。
         """
-        self.env = env
+        self.env_factory = env_factory
+        self.env = env or (env_factory() if env_factory else None)
+        if self.env is None:
+            raise ValueError("env か env_factory のいずれかを指定してください。")
         self.eval_episodes = eval_episodes
         self.match_results: List[Dict[str, Any]] = []
         self.logger = logger or logging.getLogger(__name__ + ".round_robin")
@@ -61,6 +68,9 @@ class RoundRobinMatchRunner:
         Returns:
             dict: agent_a視点での win/lose/draw の統計結果
         """
+        if self.env_factory:
+            self.env = self.env_factory()
+
         self.env.set_player([agent_a, agent_b])
         agent_a.reset_rate()
         agent_b.reset_rate()
@@ -79,21 +89,17 @@ class RoundRobinMatchRunner:
 
         win, lose, draw = agent_a.get_rate()
 
-        result = {
-            "agent_a_id": str(agent_a.get_agent_id()),
-            "agent_b_id": str(agent_b.get_agent_id()),
-            "agent_a_icon": agent_a.get_player_icon(),
-            "agent_b_icon": agent_b.get_player_icon(),
-            "agent_a_name": agent_a.player_name,
-            "agent_b_name": agent_b.player_name,
-            # "agent_a_learning_count": agent_a.get_learning_count(),
-            # "agent_b_learning_count": agent_b.get_learning_count(),
-            "win": win,
-            "lose": lose,
-            "draw": draw,
-            "episodes": self.eval_episodes,
-        }
-        self.match_results.append(result)
+        result = MatchResultPayload(
+            agent_a_name=agent_a.player_name,
+            agent_b_name=agent_b.player_name,
+            agent_a_icon=agent_a.get_player_icon(),
+            agent_b_icon=agent_b.get_player_icon(),
+            win=win,
+            lose=lose,
+            draw=draw,
+            episodes=self.eval_episodes,
+        )
+        self.match_results.append(result.to_dict())
         self.logger.info(
             "%s(%s) vs %s(%s): win=%.1f%% lose=%.1f%% draw=%.1f%%",
             agent_a.player_name,
@@ -105,7 +111,7 @@ class RoundRobinMatchRunner:
             draw,
         )
         self._emit_result(result)
-        return result
+        return result.to_dict()
 
     def evaluate(self, agent_list: List[Agent_Model]) -> List[Dict[str, Any]]:
         """

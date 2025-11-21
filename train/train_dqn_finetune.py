@@ -19,7 +19,7 @@ from agent.N_Mark_Alignment_random_npc import (
     N_Mark_Alignment_random_npc as RandomNPC,
 )
 from agent.dqn.dqn_agent import DQN_Agent
-from agent.network.q_network import set_network
+from saver.agent_loader import load_agent_model
 from saver.dqn_agent_saver.model_saver import ModelSaver
 from train.finetune_config import FinetuneConfig, FinetunePlayerSetting
 from train.trainer import Trainer
@@ -93,21 +93,17 @@ def build_agent_from_model(
     if board_side is None:
         raise ValueError("メタデータに board_side が含まれていません。")
 
-    policy_net, target_net = set_network(board_side, team_count, device)
-    agent = DQN_Agent(
+    agent = load_agent_model(
+        filepath=str(model_path),
+        board_side=board_side,
+        reward_line=model_metadata.get("reward_line", 0),
+        num_team_values=team_count,
         player_icon=player_setting.icon,
         player_value=player_value,
         learning=player_setting.learning,
-        policy_net=policy_net,
-        target_net=target_net,
+        load_replay=player_setting.load_replay,
         device=device,
     )
-
-    saver = ModelSaver()
-    if not hasattr(agent, "reward_line"):
-        agent.reward_line = 0
-    saver.load(str(model_path), agent, load_replay=player_setting.load_replay)
-    agent.set_learning(player_setting.learning)
 
     return agent, model_metadata
 

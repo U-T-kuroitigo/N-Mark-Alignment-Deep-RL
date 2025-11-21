@@ -16,8 +16,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import N_Mark_Alignment_env as env_module  # noqa: E402
 from agent.model.N_Mark_Alignment_agent_model import Agent_Model  # noqa: E402
-from evaluate.evaluate_models import EvaluationConfig, load_agent_model  # noqa: E402
+from evaluate.evaluate_models import EvaluationConfig  # noqa: E402
 from evaluate.round_robin_match_runner import RoundRobinMatchRunner  # noqa: E402
+from saver.agent_loader import load_agent_model  # noqa: E402
 
 
 class DummyAgent(Agent_Model):
@@ -137,13 +138,13 @@ def test_load_agent_model_uses_num_team_values(monkeypatch: pytest.MonkeyPatch) 
     class FakeEmbedding:
         shape = (6, 16)
 
-    monkeypatch.setattr("evaluate.evaluate_models.set_network", fake_set_network)
+    monkeypatch.setattr("saver.agent_loader.set_network", fake_set_network)
     monkeypatch.setattr(
-        "evaluate.evaluate_models.ModelSaver", lambda: DummyAgentLoader()
+        "saver.agent_loader.ModelSaver", lambda: DummyAgentLoader()
     )
-    monkeypatch.setattr("evaluate.evaluate_models.DQN_Agent", LoaderDummyAgent)
+    monkeypatch.setattr("saver.agent_loader.DQN_Agent", LoaderDummyAgent)
     monkeypatch.setattr(
-        "evaluate.evaluate_models.torch.load",
+        "saver.agent_loader.torch.load",
         lambda *args, **kwargs: {"team_embedding.weight": FakeEmbedding()},
     )
 
